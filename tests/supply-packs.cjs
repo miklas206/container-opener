@@ -4,22 +4,23 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_EXECUTABLE||undefined});
  try{
- for(const scenario of ['nested-link','delayed','already-open','minimum','no-selection','incomplete','missing','inert','switch-away']){
+ for(const scenario of ['nested-link','delayed','already-open','cached-visible','shared-wrapper','minimum','no-selection','incomplete','missing','inert','switch-away']){
   const page=await browser.newPage({viewport:{width:390,height:844}}),steps=[],errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.context().addCookies([{name:'rfc_v',value:'fixture-token',domain:'www.torn.com',path:'/'}]);
   await page.addInitScript(({keep,selected})=>{
    const values={ql_container_opener_settings_v2:{quickButton:true,allowedItems:selected?['Zip Wallet']:[],plans:{'Zip Wallet':{keep}}}};
    window.GM_getValue=(k,d)=>values[k]??d;window.GM_setValue=(k,v)=>values[k]=v;
-   window.categoryClicks=0;
+   window.categoryClicks=0;window.activeCategory='Other';
   },{keep:scenario==='minimum'?3:2,selected:scenario!=='no-selection'});
   const category=scenario==='missing'?'':`<ul><li ${scenario==='delayed'?'id="categoriesItem"':''} data-type="Supply Pack"><a href="#supply-pack-items" aria-controls="supply-pack-items"><span class="supply-pck-category-icon">Supply Packs</span></a></li></ul>`;
-  const html=`<!doctype html><body><div id="mainContainer"><h1>Items</h1>${category}<div id="category-wrap"><ul class="items-cont" id="supply-pack-items" ${scenario==='already-open'?'':'hidden'}><li class="ajax-item-loader" ${scenario==='already-open'?'hidden':''}>Loading…</li><li class="empty">Inventory contents</li></ul></div></div></body>`;
+  const html=`<!doctype html><body><div id="mainContainer"><h1>Items</h1>${category}<div id="category-wrap"><ul class="items-cont" id="supply-pack-items" ${['already-open','cached-visible'].includes(scenario)?'':'hidden'}><li class="ajax-item-loader" ${['already-open','cached-visible'].includes(scenario)?'hidden':''}>Loading…</li><li class="empty">Inventory contents</li></ul></div></div></body>`;
   await page.route('https://www.torn.com/**',async r=>{
    if(r.request().method()!=='POST')return r.fulfill({contentType:'text/html',body:html});
    const params=new URLSearchParams(r.request().postData());
    assert.equal(await page.locator('#supply-pack-items').isVisible(),true,'category must be visible before requesting inventory or opening');
    assert.equal(await page.locator('.ajax-item-loader').isVisible(),false,'native loader must finish first');
+   assert.equal(await page.evaluate(()=>window.activeCategory),'Supply Pack','native category must be activated before fetching');
    steps.push(params.get('step')+':'+(params.get('start')||''));
    if(params.get('step')==='getCategoryList'){
     const start=Number(params.get('start'));
@@ -36,6 +37,7 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
    link?.addEventListener('click',e=>{
     e.preventDefault();window.categoryClicks++;
     if(scenario==='inert')return;
+    window.activeCategory='Supply Pack';
     const list=document.querySelector('#supply-pack-items');
     if(scenario==='delayed'){
      setTimeout(()=>{list.hidden=false;setTimeout(()=>list.querySelector('.ajax-item-loader').hidden=true,200)},150);
@@ -44,12 +46,15 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
     }
    });
   },scenario);
+  if(scenario==='shared-wrapper')await page.locator('a[aria-controls]').evaluate(n=>{
+   n.setAttribute('aria-controls','category-wrap');n.setAttribute('href','#category-wrap');
+  });
   await page.addScriptTag({content:source});
   await page.locator('#ql-open').click();
-  if(['nested-link','delayed','already-open'].includes(scenario)){
+  if(['nested-link','delayed','already-open','cached-visible','shared-wrapper'].includes(scenario)){
    await page.waitForSelector('#qlco-result-overlay');
    assert.deepEqual(steps,['getCategoryList:0','getCategoryList:1','useItem:']);
-   assert.equal(await page.evaluate(()=>window.categoryClicks),scenario==='already-open'?0:1);
+   assert.equal(await page.evaluate(()=>window.categoryClicks),1);
   }else{
    await page.waitForFunction(()=>/No selected containers|incomplete|not found|did not finish|no longer visible/.test(document.querySelector('#ql-status').textContent),null,{timeout:15000});
    assert.deepEqual(steps,['missing','inert'].includes(scenario)?[]:['getCategoryList:0','getCategoryList:1']);

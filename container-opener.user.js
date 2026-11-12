@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.9
+// @version      3.1.10
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -266,7 +266,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.9</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.10</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -726,13 +726,15 @@
         const candidates = [...linked,
             ...document.querySelectorAll('ul.items-cont[id*="supply" i], ul.items-cont[data-category="Supply Pack"], ul.items-cont[data-type="Supply Pack"]'),
             ...[...document.querySelectorAll('li[data-category="Supply Pack"]')].map(row => row.closest('ul.items-cont'))];
-        return candidates.find(node => node && !node.closest('#qlco-v2') && isVisible(node) &&
+        return candidates.find(node => node?.matches('ul.items-cont') && !node.closest('#qlco-v2') && isVisible(node) &&
             node.getAttribute('aria-expanded') !== 'false' && node.getAttribute('aria-busy') !== 'true' &&
             ![...node.querySelectorAll('.ajax-item-loader, [aria-busy="true"]')].some(isVisible));
     }
     async function showSupplyPacks() {
-        if (supplyPackList()) return;
         const category = supplyPackCategory();
+        // A cached list can still have layout while another category is selected.
+        // Activate the native category on every press when its control is available.
+        if (!category && supplyPackList()) return;
         if (!category) throw new Error('Supply Packs category was not found. Open it manually in Torn, then try again. Nothing was opened.');
         // Clicking the inner icon bubbles to links and delegated category handlers.
         // Clicking the outer LI alone does not activate a handler on a child link.

@@ -35,7 +35,8 @@ start with no items selected. Newly supported types stay off until you select th
    Packs, or go straight to your saved opening selections.
 3. In **Rules → Items to open**, check the types you want to open and enter
    **Keep at least**. Unchecked items are never opened and have no quantity fields.
-4. Press **Open**. The button activates the **Supply Packs** category and waits
+4. Press **Open**. Each press activates the **Supply Packs** category, even if
+   a cached list is already visible or none of your items are selected, and waits
    for its item list to become visible and finish loading, then loads all inventory pages,
    then opens one eligible container using the fresh quantities. It never repeats
    openings automatically. Loading remains available when no items are selected or
