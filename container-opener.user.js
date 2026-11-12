@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.2
+// @version      3.1.3
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -175,6 +175,7 @@
     const blacklist = Array.isArray(saved.blacklist) ? saved.blacklist : Array.isArray(old.blacklist) ? old.blacklist : defaults;
     const prefs = { blacklist: blacklist.filter(name => names.includes(name)),
         quickButton: saved.quickButton === true,
+        quickPlacement: saved.quickPlacement === 'floating' ? 'floating' : 'inventory',
         plans: saved.plans && typeof saved.plans === 'object' ? saved.plans : {} };
     // Runtime XIDs and rfcv are deliberately never persisted or included in diagnostics.
     const runtime = new Map();
@@ -239,7 +240,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.2</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.3</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -255,7 +256,10 @@
         <p class="ql-help">Leave “Open up to” empty for no limit. “Keep at least” is the quantity to leave in your inventory.</p>
         </section>
         <section id="ql-page-settings" role="tabpanel" aria-labelledby="ql-tab-settings" hidden>
-        <h3>Opening button</h3><label class="ql-button-setting"><input id="ql-quick-enabled" type="checkbox" ${prefs.quickButton ? 'checked' : ''}> Show a floating Open button on the Items page</label>
+        <h3>Opening button</h3><label class="ql-button-setting"><input id="ql-quick-enabled" type="checkbox" ${prefs.quickButton ? 'checked' : ''}> Show an Open button on the Items page</label>
+        <label class="ql-key-label">Button position<select id="ql-quick-placement"><option value="inventory">Top of inventory</option><option value="floating">Floating — movable</option></select></label>
+        <p class="ql-help">In floating mode, drag the move handle with your mouse or finger. Arrow keys also move it. Your position is saved on this device.</p>
+        <button data-action="reset-position">Reset floating position</button>
         <p class="ql-help">One press opens the next eligible container according to your Rules. The button also works with the panel hidden. Keep at least and Open up to apply to both buttons.</p>
         <details id="ql-pricing"><summary>API key, prices and purchase cost <span id="ql-price-state"></span></summary>
         <p>Compare reward market values with the container's market value or your purchase cost. Values are estimates before selling fees.</p>
@@ -298,7 +302,86 @@
     quickOpen.addEventListener('keydown', event => {
         if (event.repeat && ['Enter', ' '].includes(event.key)) event.preventDefault();
     });
-    document.body.appendChild(quickOpen);
+    const quickBar = document.createElement('div');
+    quickBar.id = 'qlco-quick-bar'; quickBar.lang = 'en';
+    const moveHandle = document.createElement('button');
+    moveHandle.id = 'qlco-move-handle'; moveHandle.type = 'button';
+    moveHandle.textContent = '⠿';
+    moveHandle.setAttribute('aria-label', 'Move opening button');
+    moveHandle.title = 'Drag to move, or use arrow keys';
+    quickBar.append(moveHandle, quickOpen);
+    document.body.appendChild(quickBar);
+    panel.querySelector('#ql-quick-placement').value = prefs.quickPlacement;
+    const storedPosition = get('ql_container_opener_position_v1', null);
+    let quickPosition = storedPosition && Number.isFinite(storedPosition.x) && Number.isFinite(storedPosition.y)
+        ? { x: Math.max(0, Math.min(1, storedPosition.x)), y: Math.max(0, Math.min(1, storedPosition.y)) } : null;
+    let drag = null;
+    function positionFloating(x, y, persist = false) {
+        const maxX = Math.max(8, innerWidth - quickBar.offsetWidth - 8);
+        const maxY = Math.max(8, innerHeight - quickBar.offsetHeight - 8);
+        const left = Math.max(8, Math.min(maxX, x)), top = Math.max(8, Math.min(maxY, y));
+        quickBar.style.left = left + 'px'; quickBar.style.top = top + 'px';
+        quickBar.style.bottom = 'auto';
+        if (persist) {
+            quickPosition = { x: (left - 8) / Math.max(1, maxX - 8), y: (top - 8) / Math.max(1, maxY - 8) };
+            put('ql_container_opener_position_v1', quickPosition);
+        }
+    }
+    function placeQuickButton() {
+        quickBar.hidden = !prefs.quickButton;
+        const floating = prefs.quickPlacement === 'floating';
+        quickBar.classList.toggle('ql-floating', floating);
+        moveHandle.hidden = !floating;
+        if (floating) {
+            if (quickBar.parentElement !== document.body) document.body.appendChild(quickBar);
+            if (!drag) positionFloating(quickPosition ? 8 + quickPosition.x * Math.max(0, innerWidth - quickBar.offsetWidth - 16) : 12,
+                quickPosition ? 8 + quickPosition.y * Math.max(0, innerHeight - quickBar.offsetHeight - 16) : innerHeight - quickBar.offsetHeight - 60);
+        } else {
+            quickBar.style.left = ''; quickBar.style.top = ''; quickBar.style.bottom = '';
+            // Prefer Torn's Items heading; otherwise stay in document flow above the inventory list.
+            const heading = document.querySelector('#mainContainer .content-title, #mainContainer h4, #mainContainer h1');
+            const row = document.querySelector('li[data-item], [data-item-id], [data-itemid]');
+            const list = row?.closest('ul, table');
+            if (heading && !heading.closest('#qlco-v2')) {
+                if (heading.nextElementSibling !== quickBar) heading.after(quickBar);
+            } else if (list && !list.closest('#qlco-v2')) {
+                if (list.previousElementSibling !== quickBar) list.before(quickBar);
+            } else {
+                const host = document.querySelector('#mainContainer') || document.body;
+                if (quickBar.parentElement !== host || host.firstElementChild !== quickBar) host.prepend(quickBar);
+            }
+        }
+    }
+    moveHandle.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || prefs.quickPlacement !== 'floating') return;
+        event.preventDefault();
+        const box = quickBar.getBoundingClientRect();
+        drag = { id: event.pointerId, dx: event.clientX - box.left, dy: event.clientY - box.top };
+        moveHandle.setPointerCapture(event.pointerId);
+    });
+    moveHandle.addEventListener('pointermove', event => {
+        if (drag?.id !== event.pointerId) return;
+        positionFloating(event.clientX - drag.dx, event.clientY - drag.dy);
+    });
+    function endDrag(event) {
+        if (drag?.id !== event.pointerId) return;
+        const box = quickBar.getBoundingClientRect();
+        drag = null;
+        positionFloating(box.left, box.top, true);
+    }
+    moveHandle.addEventListener('pointerup', endDrag);
+    moveHandle.addEventListener('pointercancel', endDrag);
+    moveHandle.addEventListener('lostpointercapture', endDrag);
+    moveHandle.addEventListener('keydown', event => {
+        const step = event.shiftKey ? 30 : 10;
+        const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
+        if (!delta) return;
+        event.preventDefault();
+        const box = quickBar.getBoundingClientRect();
+        positionFloating(box.left + delta[0], box.top + delta[1], true);
+    });
+    moveHandle.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
+
 
     // FLIPR reference: stable Notes/People IDs anchor custom buttons in Torn's bar.
     // Create our own button, without copying native handlers or changing other scripts.
@@ -310,7 +393,7 @@
     launcher.setAttribute('aria-label', 'Container Opener — show/hide');
     launcher.setAttribute('aria-controls', panel.id);
     function ensureLauncher() {
-        if (!quickOpen.isConnected) document.body.appendChild(quickOpen);
+        placeQuickButton();
         const anchor = [document.getElementById('notes_panel_button'), document.getElementById('people_panel_button')]
             .find(node => node && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0);
         const parent = anchor?.parentElement || document.body;
@@ -422,6 +505,7 @@
         quickOpen.disabled = open.disabled;
         quickOpen.textContent = item || client.busy || halted ? open.textContent : 'None ready · see Rules';
         quickOpen.title = status;
+        placeQuickButton();
         panel.querySelectorAll('[data-action="scan"], [data-action="load"]').forEach(button => button.disabled = client.busy || halted);
         panel.querySelector('#ql-find').textContent = loading ? 'Finding your containers…' : runtime.size ? 'Fetch a fresh list from Torn' : 'Find my containers';
         if (preserveList === true || editing) return;
@@ -488,6 +572,10 @@
     });
     panel.addEventListener('change', event => {
         const target = event.target;
+        if (target.id === 'ql-quick-placement') {
+            prefs.quickPlacement = target.value === 'floating' ? 'floating' : 'inventory';
+            save(); placeQuickButton(); return;
+        }
         if (target.id === 'ql-quick-enabled') {
             prefs.quickButton = target.checked; save(); render(true); return;
         }
@@ -518,6 +606,9 @@
             panel.querySelector('#ql-pricing').open = true;
             panel.querySelector('#ql-api-key').focus({ preventScroll: true });
             panel.querySelector('#ql-api-key').scrollIntoView({ block: 'center' });
+        }
+        if (action === 'reset-position') {
+            quickPosition = null; put('ql_container_opener_position_v1', null); placeQuickButton();
         }
         if (action === 'collapse') {
             showPanel(false);
@@ -665,7 +756,7 @@
     const observer = new MutationObserver(records => {
         ensureLauncher();
         if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
-        if (!records.some(record => !panel.contains(record.target) && !quickOpen.contains(record.target) && !launcher.contains(record.target))) return;
+        if (!records.some(record => !panel.contains(record.target) && !quickBar.contains(record.target) && !launcher.contains(record.target))) return;
         clearTimeout(scanTimer); scanTimer = setTimeout(scan, 250);
     });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true,
@@ -725,7 +816,13 @@
         #qlco-v2 #ql-history li>*{display:block}
         #qlco-v2 #ql-history time{font-size:11px;color:var(--ql-muted)}
         #qlco-v2 #ql-history small{color:#98dbb1}
-        #qlco-quick-open{position:fixed;z-index:2147482998;bottom:max(8px,env(safe-area-inset-bottom));left:12px;max-width:calc(100vw - 76px);min-height:44px;padding:10px 14px;border:1px solid #65b784;border-radius:9px;background:#286341;color:white;font:bold 14px Arial,sans-serif;cursor:pointer}
+        #qlco-quick-open{max-width:100%;min-height:44px;padding:10px 14px;border:1px solid #65b784;border-radius:9px;background:#286341;color:white;font:bold 14px Arial,sans-serif;cursor:pointer}
+        #qlco-quick-bar{display:flex;gap:4px;align-items:stretch;width:max-content;max-width:calc(100% - 16px);margin:8px;color-scheme:dark}
+        #qlco-quick-bar.ql-floating{position:fixed;z-index:2147482998;margin:0;max-width:calc(100vw - 16px)}
+        #qlco-quick-bar[hidden],#qlco-move-handle[hidden]{display:none!important}
+        #qlco-quick-open{min-width:0;overflow-wrap:anywhere}
+        #qlco-move-handle{flex-shrink:0;width:36px;min-height:44px;border:1px solid #65b784;border-radius:9px;background:#263d30;color:white;font:24px Arial,sans-serif;touch-action:none;cursor:move;user-select:none}
+        #qlco-move-handle:focus-visible{outline:2px solid #9ac8ff;outline-offset:2px}
         #qlco-quick-open[hidden]{display:none!important}
         #qlco-quick-open:disabled{background:#35433c;color:#c6d2cc;cursor:default}
         #qlco-quick-open:focus-visible{outline:2px solid #9ac8ff;outline-offset:2px}

@@ -1,10 +1,10 @@
 {
   "name": "slightlylegal-container-opener",
-  "version": "3.1.2",
+  "version": "3.1.3",
   "private": true,
   "scripts": {
     "test": "node --check container-opener.user.js && node tests/requests.cjs",
-    "test:browser": "node tests/ui.cjs && node tests/keyboard.cjs && node tests/storage.cjs && node tests/tabs-rules-history.cjs"
+    "test:browser": "node tests/ui.cjs && node tests/keyboard.cjs && node tests/storage.cjs && node tests/tabs-rules-history.cjs && node tests/button-position.cjs"
   },
   "devDependencies": { "playwright": "1.59.1" }
 }

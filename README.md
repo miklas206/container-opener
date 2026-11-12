@@ -13,11 +13,12 @@ your rewards. One press opens one container.
 - **Rules** — blacklist container types, set an **Open up to** limit per round,
   and use **Keep at least** to leave a minimum quantity untouched.
 - **Settings** — manage your optional Torn API key, item prices, purchase costs
-  and floating opening button.
+  and opening button position.
 - **History** — view the last 500 confirmed openings with timestamps, rewards
   and estimated profit or loss, saved across page reloads and new rounds.
-- **Floating Open button** — open the next eligible container with the panel
-  hidden. Both opening buttons follow the same rules.
+- **Positionable Open button** — open the next eligible container with the panel
+  hidden. Place it at the top of inventory or use a movable floating button.
+  Both opening buttons follow the same rules.
 - **Results and summaries** — see rewards after each opening and review the
   containers consumed, cash received and item values for the round.
 - **Mobile layout** — responsive tabs and forms, including adjustments for the
@@ -45,8 +46,14 @@ when 3 remain. If the quantity is unknown, a keep minimum blocks opening until
 the inventory quantity is available. **Open up to** limits apply to the current
 round and reset when you choose **New round**.
 
-To open containers while the panel is hidden, enable **Show a floating Open
-button on the Items page** in **Settings**. Use the box icon to reopen the panel.
+To open containers while the panel is hidden, enable **Show an Open button
+on the Items page** in **Settings**. **Button position** defaults to **Top of
+inventory**, where the button stays in the page layout instead of covering items.
+Choose **Floating — movable** to drag its separate move handle with your mouse or
+finger. You can also focus the handle and use arrow keys (Shift moves faster).
+The floating position is saved on this device and kept within the screen when
+resizing. **Reset floating position** restores its default position.
+Use the box icon to reopen the panel.
 
 ## Optional prices
 
