@@ -41,7 +41,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    await page.locator('#ql-quick-enabled').check();
    assert.equal(await page.locator('#qlco-quick-open').isVisible(),true);
    await page.locator('[data-tab=history]').click();
-   assert.match(await page.locator('#ql-history').textContent(),/Ingen gemte/);
+   assert.match(await page.locator('#ql-history').textContent(),/No saved/);
    for (const tab of ['rules','settings','history']) {
     await page.locator('[data-tab='+tab+']').click();
     assert.equal(await page.locator('[role=tabpanel]:visible').count(),1);
@@ -70,7 +70,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    assert.equal(await page.locator('#ql-history li').count(),1);
    await page.locator('[data-tab=settings]').click();
    assert.equal(await page.locator('#ql-quick-enabled').isChecked(),true);
-   if (upgrade) assert.match(await page.locator('#ql-key-state').textContent(),/Nøgle gemt/);
+   if (upgrade) assert.match(await page.locator('#ql-key-state').textContent(),/Key saved/);
    await page.locator('#ql-quick-enabled').uncheck();
    assert.equal(await page.locator('#qlco-quick-open').isVisible(),false);
    assert.equal(calls,1);

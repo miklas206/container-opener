@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.0
+// @version      3.1.1
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -30,8 +30,8 @@
             if (reward.isMoney === true) {
                 const text = String(reward.moneyGain || '');
                 const value = /^\$[\d,]+(?:\.\d{1,2})?$/.test(text) ? Number(text.slice(1).replace(/,/g, '')) : null;
-                if (value === null) missing.push('Kontantbeløb'); else received += value;
-                return { name: 'Kontanter', qty: 1, value, cash: true };
+                if (value === null) missing.push('Cash amount'); else received += value;
+                return { name: 'Cash', qty: 1, value, cash: true };
             }
             const item = String(reward.itemID || reward.ID || '');
             const qty = Number(reward.qty);
@@ -42,7 +42,7 @@
             return { itemID: item, name, qty, value, cash: false };
         });
         return { cost, received, entries, missing, net: cost !== null && !missing.length ? received - cost : null,
-            basis: valid(override) ? 'Din købspris' : 'Markedsværdi' };
+            basis: valid(override) ? 'Your purchase cost' : 'Market value' };
     }
     function sumOpenings(records) {
         return { count: records.length, cost: records.reduce((sum, row) => sum + (row.value.cost ?? 0), 0),
@@ -59,16 +59,16 @@
             !removed.some(entry => String(entry.ID) === String(expected.itemID) && Number(entry.qty) === 1) ||
             (data.itemID != null && String(data.itemID) !== String(expected.itemID)) ||
             (expected.xid && String(data.armoryID) !== expected.xid)) {
-            throw new Error('Resultatet kunne ikke knyttes sikkert til den valgte container. Kontrollér inventory.');
+            throw new Error('The result could not be matched to the selected container. Check your inventory.');
         }
         const another = data.isAnotherAvailable === true;
         const next = another ? id(data.nextArmoryId) : '';
         if (another && ((expected.xid && (!next || next === expected.xid)) || (next && next === String(data.armoryID)))) {
-            throw new Error('Torn returnerede ikke et nyt, entydigt XID. Kontrollér inventory.');
+            throw new Error('Torn did not return a new, unique XID. Check your inventory.');
         }
         const rewards = Array.isArray(data.items.itemAppear) ? data.items.itemAppear : [];
         return { next, another, availabilityKnown: typeof data.isAnotherAvailable === 'boolean',
-            text: typeof data.text === 'string' ? data.text : 'Container åbnet.',
+            text: typeof data.text === 'string' ? data.text : 'Container opened.',
             rewards, cash: rewards.reduce((sum, entry) => {
                 const amount = String(entry.moneyGain || '');
                 return sum + (entry.isMoney === true && /^\$[\d,]+(?:\.\d{1,2})?$/.test(amount)
@@ -82,10 +82,10 @@
         return {
             get busy() { return busy; },
             async discover() {
-                if (busy) throw new Error('Afvent det igangværende svar.');
-                if (!active()) throw new Error('Brug knappen på den aktive inventory-side.');
+                if (busy) throw new Error('Wait for the current response.');
+                if (!active()) throw new Error('Use the button on the active inventory page.');
                 const rfcv = String(token() || '');
-                if (!/^[a-zA-Z0-9_-]{4,200}$/.test(rfcv)) throw new Error('Torn er ikke klar. Genindlæs Items-siden og prøv igen.');
+                if (!/^[a-zA-Z0-9_-]{4,200}$/.test(rfcv)) throw new Error('Torn is not ready. Reload the Items page and try again.');
                 busy = true;
                 const controller = new AbortController();
                 const timer = setTimeout(() => controller.abort(), timeout);
@@ -95,25 +95,25 @@
                     const response = await fetchFn(url.href, { method: 'POST', credentials: 'same-origin', redirect: 'error',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
                         body: new URLSearchParams({ step: 'getCategoryList', itemName: 'Supply Pack', start: '0' }).toString(), signal: controller.signal });
-                    if (!response.ok) throw new Error('Torn kunne ikke hente listen. Prøv at åbne Supply Packs i Torn.');
+                    if (!response.ok) throw new Error('Torn could not load the list. Try opening Supply Packs in Torn.');
                     let data;
                     try { data = JSON.parse(await response.text()); }
-                    catch { throw new Error('Listen kunne ikke læses. Kontrollér login i Torn og genindlæs siden.'); }
-                    if (!Array.isArray(data.list)) throw new Error('Torn gav en ukendt liste. Åbn Supply Packs i Torn og tryk Opdatér.');
+                    catch { throw new Error('The list could not be read. Check your Torn login and reload the page.'); }
+                    if (!Array.isArray(data.list)) throw new Error('Torn returned an unexpected list. Open Supply Packs in Torn and press Refresh.');
                     return data;
                 } catch (error) {
-                    if (error.name === 'AbortError') throw new Error('Torn svarede ikke i tide. Prøv igen, når siden virker.');
+                    if (error.name === 'AbortError') throw new Error('Torn did not respond in time. Try again when the page is working.');
                     throw error;
                 } finally { clearTimeout(timer); busy = false; }
             },
             async open(item) {
-                if (busy) throw new Error('Afvent det igangværende svar.');
-                if (!active()) throw new Error('Brug knappen på den aktive inventory-side.');
+                if (busy) throw new Error('Wait for the current response.');
+                if (!active()) throw new Error('Use the button on the active inventory page.');
                 const xid = id(item.xid);
-                if (!/^\d+$/.test(String(item.itemID))) throw new Error('Åbn kategorien med dine containere i Torn først.');
-                if ((xid && spent.has(xid)) || uncertain.has(String(item.itemID))) throw new Error('Kontrollér inventory og genindlæs siden, før du prøver igen.');
+                if (!/^\d+$/.test(String(item.itemID))) throw new Error('Open the category containing your containers in Torn first.');
+                if ((xid && spent.has(xid)) || uncertain.has(String(item.itemID))) throw new Error('Check your inventory and reload the page before trying again.');
                 const rfcv = String(token() || '');
-                if (!/^[a-zA-Z0-9_-]{4,200}$/.test(rfcv)) throw new Error('Torn er ikke klar. Genindlæs Items-siden og prøv igen.');
+                if (!/^[a-zA-Z0-9_-]{4,200}$/.test(rfcv)) throw new Error('Torn is not ready. Reload the Items page and try again.');
                 busy = true;
                 // Once dispatched, never reuse this XID or retry automatically, even after a timeout.
                 if (xid) spent.add(xid);
@@ -130,15 +130,15 @@
                             : { step: 'useItem', id: String(item.itemID), itemID: String(item.itemID) }).toString(),
                         signal: controller.signal
                     });
-                    if (!response.ok) throw new Error(`HTTP ${response.status}. Udfaldet er ukendt; kontrollér inventory.`);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}. The outcome is unknown; check your inventory.`);
                     let data;
                     try { data = JSON.parse(await response.text()); }
-                    catch { throw new Error('Torn gav ikke et JSON-svar. Kontrollér login/CAPTCHA og inventory.'); }
+                    catch { throw new Error('Torn did not return JSON. Check your login/CAPTCHA and inventory.'); }
                     const result = readSuccess(data, { itemID: item.itemID, xid });
                     uncertain.delete(String(item.itemID));
                     return result;
                 } catch (error) {
-                    if (error.name === 'AbortError') throw new Error('Svaret tog for lang tid. Åbningen kan være sket; kontrollér inventory.');
+                    if (error.name === 'AbortError') throw new Error('The response timed out. The container may have been opened; check your inventory.');
                     throw error;
                 } finally { clearTimeout(timer); busy = false; }
             }
@@ -168,7 +168,7 @@
     };
     const put = (key, value) => {
         try { if (typeof GM_setValue === 'function') GM_setValue(key, value); else localStorage.setItem(key, JSON.stringify(value)); }
-        catch { status = 'Indstillinger kunne ikke gemmes på denne enhed.'; }
+        catch { status = 'Settings could not be saved on this device.'; }
     };
     const old = get('ql_container_opener_settings_v1', {});
     const saved = get('ql_container_opener_settings_v2', {});
@@ -179,7 +179,7 @@
     // Runtime XIDs and rfcv are deliberately never persisted or included in diagnostics.
     const runtime = new Map();
     const log = [];
-    let filter = 'all', status = 'Vælg dine containere. Ét tryk åbner én ting.', opened = 0, cash = 0;
+    let filter = 'all', status = 'Choose your containers. One press opens one item.', opened = 0, cash = 0;
     let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true, loading = false;
     const rewardTotals = new Map();
     const records = [];
@@ -196,7 +196,7 @@
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const norm = value => String(value || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
     const money = value => '$' + value.toLocaleString('en-US', { maximumFractionDigits: 2 });
-    const signedMoney = value => value === null ? 'Pris mangler' : `${value >= 0 ? '+' : '−'}${money(Math.abs(value))}`;
+    const signedMoney = value => value === null ? 'Price unavailable' : `${value >= 0 ? '+' : '−'}${money(Math.abs(value))}`;
     const prices = () => priceData.fetchedAt > Date.now() - 3600000 ? priceData.items : {};
     const plainText = value => {
         const template = document.createElement('template');
@@ -236,39 +236,40 @@
 
     const panel = document.createElement('aside');
     panel.id = 'qlco-v2';
+    panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.0</small><h2>Container Opener</h2></div>
-        <button data-action="api-settings" aria-controls="ql-pricing">API-nøgle</button><button data-action="collapse" aria-label="Skjul ved chatten" title="Skjul ved chatten">−</button></header>
-        <nav class="ql-tabs" role="tablist" aria-label="Container Opener faner">
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.1</small><h2>Container Opener</h2></div>
+        <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
+        <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
         <button id="ql-tab-settings" role="tab" aria-selected="false" aria-controls="ql-page-settings" tabindex="-1" data-tab="settings">Settings</button>
         <button id="ql-tab-history" role="tab" aria-selected="false" aria-controls="ql-page-history" tabindex="-1" data-tab="history">History</button></nav>
-        <div class="ql-body"><section id="ql-page-rules" role="tabpanel" aria-labelledby="ql-tab-rules"><div class="ql-totals"><span>Åbnet <b id="ql-count">0</b></span><span>Kontanter <b id="ql-cash">$0</b></span></div>
-        <nav aria-label="Kategorier"><select id="ql-filter"><option value="all">Alle kategorier</option>${Object.entries(GROUPS).map(([key, group]) => `<option value="${key}">${group.label}</option>`).join('')}</select><button data-action="scan">Opdatér</button></nav>
-        <p class="ql-help">1. Find dine ting &nbsp; 2. Markér dem, du vil åbne &nbsp; 3. Tryk Åbn</p>
-        <button id="ql-find" data-action="load">Find mine containere</button>
-        <details id="ql-total"><summary>Samlet udbytte denne session</summary><div id="ql-total-rewards">Ingen åbninger endnu.</div></details>
-        <div class="ql-columns"><span>Container</span><span>Åbn højst</span><span>Behold</span></div>
-        <div id="ql-list"></div><details><summary>Blokeringer</summary><div id="ql-blocks"></div></details>
-        <p class="ql-help">Lad “Åbn højst” stå tomt for alle. “Behold” er det antal, der skal blive liggende.</p>
+        <div class="ql-body"><section id="ql-page-rules" role="tabpanel" aria-labelledby="ql-tab-rules"><div class="ql-totals"><span>Opened <b id="ql-count">0</b></span><span>Cash <b id="ql-cash">$0</b></span></div>
+        <nav aria-label="Categories"><select id="ql-filter"><option value="all">All categories</option>${Object.entries(GROUPS).map(([key, group]) => `<option value="${key}">${group.label}</option>`).join('')}</select><button data-action="scan">Refresh</button></nav>
+        <p class="ql-help">1. Find your items &nbsp; 2. Select what to open &nbsp; 3. Press Open</p>
+        <button id="ql-find" data-action="load">Find my containers</button>
+        <details id="ql-total"><summary>Total rewards this session</summary><div id="ql-total-rewards">No openings yet.</div></details>
+        <div class="ql-columns"><span>Container</span><span>Open up to</span><span>Keep at least</span></div>
+        <div id="ql-list"></div><details><summary>Blocked containers</summary><div id="ql-blocks"></div></details>
+        <p class="ql-help">Leave “Open up to” empty for no limit. “Keep at least” is the quantity to leave in your inventory.</p>
         </section>
         <section id="ql-page-settings" role="tabpanel" aria-labelledby="ql-tab-settings" hidden>
-        <h3>Åbningsknap</h3><label class="ql-button-setting"><input id="ql-quick-enabled" type="checkbox" ${prefs.quickButton ? 'checked' : ''}> Vis en flydende Åbn-knap på Items-siden</label>
-        <p class="ql-help">Ét tryk åbner den næste tilladte container efter dine Rules. Knappen virker også med panelet skjult. Behold mindst og Åbn højst gælder for begge knapper.</p>
-        <details id="ql-pricing"><summary>API-nøgle, priser og købspris <span id="ql-price-state"></span></summary>
-        <p>Vi sammenligner udbyttets markedsværdi med containerens markedsværdi eller din egen købspris. Værdierne er estimater før salgsgebyrer.</p>
-        <label class="ql-key-label">Torn API-nøgle · Public Only<input id="ql-api-key" type="password" autocomplete="off" placeholder="Indsæt nøgle én gang"></label>
+        <h3>Opening button</h3><label class="ql-button-setting"><input id="ql-quick-enabled" type="checkbox" ${prefs.quickButton ? 'checked' : ''}> Show a floating Open button on the Items page</label>
+        <p class="ql-help">One press opens the next eligible container according to your Rules. The button also works with the panel hidden. Keep at least and Open up to apply to both buttons.</p>
+        <details id="ql-pricing"><summary>API key, prices and purchase cost <span id="ql-price-state"></span></summary>
+        <p>Compare reward market values with the container's market value or your purchase cost. Values are estimates before selling fees.</p>
+        <label class="ql-key-label">Torn API key · Public Only<input id="ql-api-key" type="password" autocomplete="off" placeholder="Enter your key once"></label>
         <p id="ql-key-state" class="ql-help" role="status"></p>
-        <p class="ql-help">Nøglen gemmes kun lokalt og sendes kun til api.torn.com for at hente itemnavne og markedsværdier (torn → items). Ingen andre modtagere. Åbning virker også uden nøgle.</p>
-        <a href="https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=ContainerOpener&torn=items" target="_blank" rel="noopener noreferrer">Opret en nøgle kun til itempriser i Torn</a>
-        <div class="ql-price-actions"><button data-action="prices">Gem og hent priser</button><button data-action="forget-key">Glem nøgle</button></div>
-        <p id="ql-price-status" role="status">Ingen priser indlæst endnu.</p><p class="ql-help">Har du købt en container til en anden pris? Angiv din pris pr. stk. nedenfor. Tomt felt bruger markedsværdi. Nye priser gælder fremtidige åbninger; tidligere resultater bevarer deres prisgrundlag.</p><div id="ql-costs"></div></details>
+        <p class="ql-help">Your key is stored locally and sent only to api.torn.com to fetch item names and market values (torn → items). Opening containers also works without a key.</p>
+        <a href="https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=ContainerOpener&torn=items" target="_blank" rel="noopener noreferrer">Create an item-price API key in Torn</a>
+        <div class="ql-price-actions"><button data-action="prices">Save and fetch prices</button><button data-action="forget-key">Forget key</button></div>
+        <p id="ql-price-status" role="status">No prices loaded yet.</p><p class="ql-help">Bought a container at a different price? Enter your cost per item below. Leave it empty to use market value. New prices apply to future openings; past results retain their original valuation.</p><div id="ql-costs"></div></details>
         </section>
         <section id="ql-page-history" role="tabpanel" aria-labelledby="ql-tab-history" hidden>
-        <h3>Åbningshistorik</h3><p class="ql-help">De seneste 500 bekræftede åbninger gemmes på denne enhed, også efter genindlæsning og en ny runde. Tidligere åbninger fra før denne opdatering kan ikke genskabes.</p>
-        <ol id="ql-history"></ol><details><summary>Seneste gevinster denne session</summary><ol id="ql-log"><li>Ingen åbninger endnu.</li></ol></details></section></div>
-        <footer class="ql-body"><section id="ql-latest" hidden aria-live="polite" aria-label="Seneste udbytte"></section><p id="ql-status" role="status" aria-live="polite"></p><button id="ql-open">Åbn næste</button><button id="ql-finish" data-action="finish">Afslut og se opgørelse</button><small>Ét tryk · én container · ingen automatisk gentagelse</small></footer>`;
+        <h3>Opening history</h3><p class="ql-help">The last 500 confirmed openings are saved on this device, including after reloading or starting a new round. Openings from before this feature was installed cannot be recovered.</p>
+        <ol id="ql-history"></ol><details><summary>Recent rewards this session</summary><ol id="ql-log"><li>No openings yet.</li></ol></details></section></div>
+        <footer class="ql-body"><section id="ql-latest" hidden aria-live="polite" aria-label="Latest rewards"></section><p id="ql-status" role="status" aria-live="polite"></p><button id="ql-open">Open next</button><button id="ql-finish" data-action="finish">Finish and view summary</button><small>One press · one container · no automatic repeats</small></footer>`;
     document.body.appendChild(panel);
 
     function selectTab(tab) {
@@ -305,8 +306,8 @@
     launcher.id = 'qlco-dock-button';
     launcher.type = 'button';
     launcher.textContent = '📦';
-    launcher.title = 'Container Opener — vis/skjul';
-    launcher.setAttribute('aria-label', 'Container Opener — vis/skjul');
+    launcher.title = 'Container Opener — show/hide';
+    launcher.setAttribute('aria-label', 'Container Opener — show/hide');
     launcher.setAttribute('aria-controls', panel.id);
     function ensureLauncher() {
         if (!quickOpen.isConnected) document.body.appendChild(quickOpen);
@@ -391,45 +392,45 @@
         latest.hidden = !log.length;
         if (log.length) {
             const entry = log[0];
-            latest.innerHTML = `<strong>Seneste udbytte · ${esc(entry.name)}</strong><div class="ql-reward-line">${esc(entry.rewardText || 'Se Torns resultat nedenfor.')}</div><p>${esc(entry.text)}</p>`;
+            latest.innerHTML = `<strong>Latest rewards · ${esc(entry.name)}</strong><div class="ql-reward-line">${esc(entry.rewardText || 'See the Torn result below.')}</div><p>${esc(entry.text)}</p>`;
         }
-        panel.querySelector('#ql-log').innerHTML = log.length ? log.map(entry => `<li><b>${esc(entry.name)}</b><span>${esc(entry.text)}</span><small>${esc(entry.rewardText)}</small></li>`).join('') : '<li>Ingen åbninger endnu.</li>';
+        panel.querySelector('#ql-log').innerHTML = log.length ? log.map(entry => `<li><b>${esc(entry.name)}</b><span>${esc(entry.text)}</span><small>${esc(entry.rewardText)}</small></li>`).join('') : '<li>No openings yet.</li>';
         panel.querySelector('#ql-history').innerHTML = history.length ? history.map(entry =>
-            `<li><time>${esc(new Date(entry.openedAt).toLocaleString())}</time><b>${esc(entry.name)}</b><span>${esc(entry.text)}</span><small>${esc(entry.rewardText || '')}</small><small>${entry.net === null || !Number.isFinite(entry.net) ? 'Pris mangler' : signedMoney(entry.net)}</small></li>`).join('') : '<li>Ingen gemte åbninger endnu.</li>';
+            `<li><time>${esc(new Date(entry.openedAt).toLocaleString('en-GB'))}</time><b>${esc(entry.name)}</b><span>${esc(entry.text)}</span><small>${esc(entry.rewardText || '')}</small><small>${entry.net === null || !Number.isFinite(entry.net) ? 'Price unavailable' : signedMoney(entry.net)}</small></li>`).join('') : '<li>No saved openings yet.</li>';
         panel.querySelector('#ql-total-rewards').textContent = opened
-            ? [money(cash), ...[...rewardTotals.values()].map(item => `${item.qty}× ${item.name}`)].join(' · ') : 'Ingen åbninger endnu.';
+            ? [money(cash), ...[...rewardTotals.values()].map(item => `${item.qty}× ${item.name}`)].join(' · ') : 'No openings yet.';
     }
     function render(preserveList = false) {
         const focus = document.activeElement;
         const editing = panel.contains(focus) && focus.matches('input[type="number"]');
         panel.querySelector('#ql-key-state').textContent = get('ql_container_opener_api_key_v1', '')
-            ? 'Nøgle gemt på denne enhed. Bevares, når dette script opdateres.'
-            : 'Ingen nøgle gemt på denne enhed.';
+            ? 'Key saved on this device. Retained when this script is updated.'
+            : 'No key saved on this device.';
         panel.querySelector('#ql-count').textContent = opened;
         panel.querySelector('#ql-cash').textContent = money(cash);
         // Result UI must update even while quantity fields retain keyboard focus.
         renderResults();
         const item = next();
         panel.querySelector('#ql-status').textContent = !halted && !client.busy && item && !findToken()
-            ? 'Torn er ikke klar endnu. Genindlæs Items-siden, hvis denne besked bliver stående.' : status;
+            ? 'Torn is not ready yet. Reload the Items page if this message persists.' : status;
         const open = panel.querySelector('#ql-open');
         open.disabled = client.busy || pricesLoading || halted || !!popup || !item || !findToken();
         panel.querySelector('#ql-finish').disabled = client.busy || !records.length;
-        panel.querySelector('#ql-price-state').textContent = pricesLoading ? '· henter…' : Object.keys(prices()).length ? '· klar' : '· ikke aktiveret';
-        open.textContent = client.busy ? loading ? 'Finder dine containere…' : 'Afventer Torn…' : halted ? 'Stoppet — genindlæs siden' : item ? `Åbn ${item.name}` : 'Markér en container ovenfor';
+        panel.querySelector('#ql-price-state').textContent = pricesLoading ? '· loading…' : Object.keys(prices()).length ? '· ready' : '· not enabled';
+        open.textContent = client.busy ? loading ? 'Finding your containers…' : 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : 'Select a container in Rules';
         quickOpen.hidden = !prefs.quickButton;
         quickOpen.disabled = open.disabled;
-        quickOpen.textContent = item || client.busy || halted ? open.textContent : 'Ingen klar · se Rules';
+        quickOpen.textContent = item || client.busy || halted ? open.textContent : 'None ready · see Rules';
         quickOpen.title = status;
         panel.querySelectorAll('[data-action="scan"], [data-action="load"]').forEach(button => button.disabled = client.busy || halted);
-        panel.querySelector('#ql-find').textContent = loading ? 'Finder dine containere…' : runtime.size ? 'Hent frisk liste fra Torn' : 'Find mine containere';
+        panel.querySelector('#ql-find').textContent = loading ? 'Finding your containers…' : runtime.size ? 'Fetch a fresh list from Torn' : 'Find my containers';
         if (preserveList === true || editing) return;
-        panel.querySelector('#ql-costs').innerHTML = [...runtime.values()].map(item => `<label class="ql-cost-row"><span>${esc(item.name)}</span><input type="number" min="0" step="0.01" inputmode="decimal" data-cost="${esc(item.itemID)}" aria-label="Din købspris pr. ${esc(item.name)}" placeholder="Markedspris" value="${typeof costs[item.itemID] === 'number' ? costs[item.itemID] : ''}"></label>`).join('');
+        panel.querySelector('#ql-costs').innerHTML = [...runtime.values()].map(item => `<label class="ql-cost-row"><span>${esc(item.name)}</span><input type="number" min="0" step="0.01" inputmode="decimal" data-cost="${esc(item.itemID)}" aria-label="Your purchase cost per ${esc(item.name)}" placeholder="Market price" value="${typeof costs[item.itemID] === 'number' ? costs[item.itemID] : ''}"></label>`).join('');
         const visible = [...runtime.values()].filter(item => filter === 'all' || groupOf(item.name) === filter);
         panel.querySelector('#ql-list').innerHTML = visible.length ? visible.map(item => {
             const p = plan(item.name), blocked = prefs.blacklist.includes(item.name);
-            return `<article data-name="${esc(item.name)}" class="${blocked ? 'ql-blocked' : ''}"><label><input type="checkbox" data-field="selected" ${p.selected ? 'checked' : ''} ${blocked ? 'disabled' : ''}><span><b>${esc(item.name)}</b><small>${item.quantity === null ? 'Antal ukendt' : `${item.quantity} tilbage`} · ${item.opened} åbnet · ${blocked ? 'Blokeret' : item.itemID ? p.keep && item.quantity === null ? 'Hent listen for at bruge Behold' : 'Klar' : 'Åbn kategorien i Torn'}</small></span></label><label class="ql-number"><small>Åbn højst</small><input aria-label="Antal der skal åbnes af ${esc(item.name)}" data-field="limit" type="number" min="0" step="1" placeholder="Alle" value="${p.limit || ''}"></label><label class="ql-number"><small>Behold mindst</small><input aria-label="Behold mindst ${esc(item.name)}" data-field="keep" type="number" min="0" step="1" value="${p.keep}"></label></article>`;
-        }).join('') : `<p class="ql-empty">${filter === 'all' ? 'Tryk “Find mine containere”. Så henter vi listen fra dit inventory uden at åbne noget.' : 'Ingen fund i denne kategori. Vælg Alle kategorier, eller åbn den relevante kategori i Torn.'}</p>`;
+            return `<article data-name="${esc(item.name)}" class="${blocked ? 'ql-blocked' : ''}"><label><input type="checkbox" data-field="selected" ${p.selected ? 'checked' : ''} ${blocked ? 'disabled' : ''}><span><b>${esc(item.name)}</b><small>${item.quantity === null ? 'Quantity unknown' : `${item.quantity} remaining`} · ${item.opened} opened · ${blocked ? 'Blocked' : item.itemID ? p.keep && item.quantity === null ? 'Fetch the list to use Keep at least' : 'Ready' : 'Open the category in Torn'}</small></span></label><label class="ql-number"><small>Open up to</small><input aria-label="Maximum to open: ${esc(item.name)}" data-field="limit" type="number" min="0" step="1" placeholder="All" value="${p.limit || ''}"></label><label class="ql-number"><small>Keep at least</small><input aria-label="Keep at least ${esc(item.name)}" data-field="keep" type="number" min="0" step="1" value="${p.keep}"></label></article>`;
+        }).join('') : `<p class="ql-empty">${filter === 'all' ? 'Press “Find my containers” to load your inventory without opening anything.' : 'Nothing found in this category. Select All categories or open the relevant category in Torn.'}</p>`;
         panel.querySelector('#ql-blocks').innerHTML = names.map(name => `<label><input type="checkbox" data-block="${esc(name)}" ${prefs.blacklist.includes(name) ? 'checked' : ''}>${esc(name)}</label>`).join('');
     }
     async function openOne(event) {
@@ -442,7 +443,7 @@
         const catalog = prices();
         const override = costs[item.itemID];
         const pricedAt = priceData.fetchedAt;
-        status = `Åbner én ${item.name}…`;
+        status = `Opening one ${item.name}…`;
         // createClient sets busy synchronously before its first await.
         try {
             const promise = client.open(item);
@@ -471,13 +472,13 @@
             history.unshift({ ...log[0], openedAt: Date.now(), net: value.net });
             history.length = Math.min(history.length, 500);
             put('ql_container_opener_history_v1', history);
-            status = result.availabilityKnown && !result.another ? 'Åbnet. Ingen flere af denne type; næste valgte type er klar.' : 'Åbnet. Tryk igen, når du vil åbne den næste.';
+            status = result.availabilityKnown && !result.another ? 'Opened. None left of this type; the next selected type is ready.' : 'Opened. Press again when you want to open the next one.';
             showResult(record, !next());
         } catch (error) {
             halted = true;
             item.touched = true;
             item.xid = '';
-            status = `${error.message} Kontrollér dit inventory og genindlæs siden for at fortsætte. Der prøves ikke automatisk igen.`;
+            status = `${error.message} Check your inventory and reload the page to continue. No automatic retry will be made.`;
         }
         render();
     }
@@ -521,16 +522,16 @@
         if (action === 'collapse') {
             showPanel(false);
         }
-        if (action === 'scan') { status = 'Listen er opdateret fra den åbne inventory-kategori.'; scan(); }
+        if (action === 'scan') { status = 'List refreshed from the open inventory category.'; scan(); }
         if (action === 'load' && event.isTrusted) loadInventory();
         if (action === 'prices' && event.isTrusted) loadPrices();
-        if (action === 'forget-key') { put('ql_container_opener_api_key_v1', ''); panel.querySelector('#ql-api-key').value = ''; panel.querySelector('#ql-price-status').textContent = 'Nøglen er fjernet. Allerede hentede priser kan bruges, indtil de udløber.'; render(true); }
+        if (action === 'forget-key') { put('ql_container_opener_api_key_v1', ''); panel.querySelector('#ql-api-key').value = ''; panel.querySelector('#ql-price-status').textContent = 'Key removed. Cached prices remain available until they expire.'; render(true); }
         if (action === 'finish' && !client.busy && records.length) showSummary();
     });
     async function loadInventory() {
         if (client.busy || halted) return;
         loading = true;
-        status = 'Henter dine containere. Der åbnes ikke noget.';
+        status = 'Loading your containers. Nothing will be opened.';
         try {
             const request = client.discover(); render();
             const data = await request;
@@ -552,8 +553,8 @@
                 if (item.supplyPack) runtime.delete(name);
             }
             for (const [name, item] of found) runtime.set(name, { ...item, supplyPack: true });
-            status = found.size ? `${found.size} typer fundet. Markér dem, du vil åbne, og tryk Åbn.` : 'Ingen kendte containere fundet. Åbn den relevante kategori i Torn, så aflæser panelet den automatisk.';
-            if (Number(data.count) > data.list.length) status += ' Listen kan være opdelt; åbn kategorien i Torn for at se flere.';
+            status = found.size ? `${found.size} types found. Select what you want to open and press Open.` : 'No known containers found. Open the relevant category in Torn for the panel to detect them.';
+            if (Number(data.count) > data.list.length) status += ' The list may be paginated; open the category in Torn to see more.';
         } catch (error) { status = error.message; }
         finally { loading = false; render(); }
     }
@@ -562,15 +563,15 @@
         const input = panel.querySelector('#ql-api-key');
         const key = input.value.trim() || get('ql_container_opener_api_key_v1', '');
         const message = panel.querySelector('#ql-price-status');
-        if (!/^[A-Za-z0-9]{16,64}$/.test(key)) { message.textContent = 'Indsæt en gyldig Torn API-nøgle med adgang til torn → items.'; return; }
+        if (!/^[A-Za-z0-9]{16,64}$/.test(key)) { message.textContent = 'Enter a valid Torn API key with access to torn → items.'; return; }
         put('ql_container_opener_api_key_v1', key);
         input.value = '';
-        pricesLoading = true; message.textContent = 'Henter markedspriser fra Torn…'; render(true);
+        pricesLoading = true; message.textContent = 'Fetching market prices from Torn…'; render(true);
         try {
             const url = new URL('https://api.torn.com/torn/');
             url.search = new URLSearchParams({ selections: 'items', key, comment: 'QL Container Opener prices' }).toString();
             const data = await new Promise((resolve, reject) => {
-                const fail = () => reject(new Error('Priser kunne ikke hentes. Kontrollér nøglens adgang og prøv igen.'));
+                const fail = () => reject(new Error('Prices could not be fetched. Check your key permissions and try again.'));
                 if (typeof GM_xmlhttpRequest === 'function') {
                     GM_xmlhttpRequest({ method: 'GET', url: url.href, anonymous: true, timeout: 15000,
                         onload: response => {
@@ -582,17 +583,17 @@
                 }
             });
             if (data.error || !data.items || typeof data.items !== 'object') {
-                // Keep the user's saved key on API errors; only Glem nøgle removes it.
-                throw new Error(`Torn afviste prisopslaget${data.error?.code ? ` (kode ${Number(data.error.code)})` : ''}. Kontrollér adgang til torn → items.`);
+                // Keep the user's saved key on API errors; only Forget key removes it.
+                throw new Error(`Torn rejected the price request${data.error?.code ? ` (code ${Number(data.error.code)})` : ''}. Check access to torn → items.`);
             }
             const items = {};
             for (const [itemID, item] of Object.entries(data.items)) {
                 if (/^\d+$/.test(itemID) && Number.isFinite(item.market_value) && item.market_value > 0)
                     items[itemID] = { name: String(item.name || `Item ${itemID}`), price: item.market_value };
             }
-            if (!Object.keys(items).length) throw new Error('Torn returnerede ingen anvendelige markedspriser.');
+            if (!Object.keys(items).length) throw new Error('Torn returned no usable market prices.');
             priceData = { fetchedAt: Date.now(), items }; put('ql_container_opener_prices_v1', priceData);
-            message.textContent = `Priser hentet ${new Date(priceData.fetchedAt).toLocaleTimeString()}. Bruges i op til én time. Tidligere åbninger ændres ikke.`;
+            message.textContent = `Prices fetched ${new Date(priceData.fetchedAt).toLocaleTimeString('en-GB')}. Cached for up to one hour. Past openings are unchanged.`;
         } catch (error) { message.textContent = error.message; }
         finally { pricesLoading = false; render(true); }
     }
@@ -606,7 +607,8 @@
     function modal(tone, content, actions) {
         if (popup) popup.remove(); else popupReturnFocus = document.activeElement;
         popup = document.createElement('div'); popup.id = 'qlco-result-overlay';
-        popup.innerHTML = `<section class="ql-dialog ${tone}" role="dialog" aria-modal="true" aria-labelledby="ql-dialog-title" tabindex="-1"><button class="ql-dialog-close" aria-label="Luk resultat">×</button><div class="ql-dialog-scroll">${content}</div><div class="ql-dialog-actions">${actions.map((action, index) => `<button data-dialog-action="${index}" class="${index === actions.length - 1 ? 'primary' : ''}">${esc(action.label)}</button>`).join('')}</div></section>`;
+        popup.lang = 'en';
+        popup.innerHTML = `<section class="ql-dialog ${tone}" role="dialog" aria-modal="true" aria-labelledby="ql-dialog-title" tabindex="-1"><button class="ql-dialog-close" aria-label="Close result">×</button><div class="ql-dialog-scroll">${content}</div><div class="ql-dialog-actions">${actions.map((action, index) => `<button data-dialog-action="${index}" class="${index === actions.length - 1 ? 'primary' : ''}">${esc(action.label)}</button>`).join('')}</div></section>`;
         document.body.appendChild(popup); panel.inert = true; launcher.inert = true;
         popup.querySelector('.ql-dialog-close').addEventListener('click', closePopup);
         popup.querySelectorAll('[data-dialog-action]').forEach(button => button.addEventListener('click', event => actions[Number(button.dataset.dialogAction)].run(event)));
@@ -624,18 +626,18 @@
     }
     function toneFor(net, cost) { return net === null ? 'neutral' : net < 0 ? 'loss' : net === 0 ? 'even' : cost > 0 && net >= cost * .5 ? 'jackpot' : 'win'; }
     function rewardRows(entries) {
-        return `<ul class="ql-loot">${entries.map(entry => `<li><span class="ql-loot-icon">${entry.cash ? '$' : '◆'}</span><span><b>${entry.cash ? 'Kontanter' : `${entry.qty}× ${esc(entry.name)}`}</b></span><strong>${entry.value === null ? 'Pris mangler' : money(entry.value)}</strong></li>`).join('')}</ul>`;
+        return `<ul class="ql-loot">${entries.map(entry => `<li><span class="ql-loot-icon">${entry.cash ? '$' : '◆'}</span><span><b>${entry.cash ? 'Cash' : `${entry.qty}× ${esc(entry.name)}`}</b></span><strong>${entry.value === null ? 'Price unavailable' : money(entry.value)}</strong></li>`).join('')}</ul>`;
     }
     function showResult(record, finished) {
         if (finished) { showSummary(record); return; }
         const value = record.value, tone = toneFor(value.net, value.cost);
-        const heading = { neutral: 'Dit udbytte er klar', loss: 'Denne gav underskud', even: 'Det gik lige op', jackpot: 'Stort udbytte!', win: 'Du kom ud med overskud!' }[tone];
-        modal(tone, `<div class="ql-result-hero"><div class="ql-result-emblem">${tone === 'jackpot' ? '✦' : tone === 'loss' ? '↘' : '◆'}</div><small>${esc(record.name)} åbnet</small><h2 id="ql-dialog-title">${heading}</h2><div class="ql-result-number">${signedMoney(value.net)}</div><span>${value.net === null ? 'Vi mangler priser for at beregne forskellen' : 'Estimeret forskel før salgsgebyrer'}</span></div>
-            ${rewardRows(value.entries)}<div class="ql-result-stats"><span>Containerens pris<b>${value.cost === null ? 'Ukendt' : money(value.cost)}</b><small>${value.basis}</small></span><span>Udbyttets værdi<b>${value.missing.length ? 'Mindst ' : ''}${money(value.received)}</b><small>Kontanter + items</small></span></div><p class="ql-result-note">${esc(record.text)}</p>${value.net === null ? '<p class="ql-result-note">Aktivér priser i panelet for fremtidige åbninger. Manglende priser tælles ikke som nul.</p>' : ''}`,
-            [{ label: value.net === null ? 'Aktivér priser' : 'Tilbage til listen', run: () => {
+        const heading = { neutral: 'Your rewards are ready', loss: 'This one made a loss', even: 'You broke even', jackpot: 'Big rewards!', win: 'You made a profit!' }[tone];
+        modal(tone, `<div class="ql-result-hero"><div class="ql-result-emblem">${tone === 'jackpot' ? '✦' : tone === 'loss' ? '↘' : '◆'}</div><small>${esc(record.name)} opened</small><h2 id="ql-dialog-title">${heading}</h2><div class="ql-result-number">${signedMoney(value.net)}</div><span>${value.net === null ? 'Prices are missing to calculate the difference' : 'Estimated difference before selling fees'}</span></div>
+            ${rewardRows(value.entries)}<div class="ql-result-stats"><span>Container cost<b>${value.cost === null ? 'Unknown' : money(value.cost)}</b><small>${value.basis}</small></span><span>Reward value<b>${value.missing.length ? 'At least ' : ''}${money(value.received)}</b><small>Cash + items</small></span></div><p class="ql-result-note">${esc(record.text)}</p>${value.net === null ? '<p class="ql-result-note">Enable prices in the panel for future openings. Missing prices are not counted as zero.</p>' : ''}`,
+            [{ label: value.net === null ? 'Enable prices' : 'Back to the list', run: () => {
                 closePopup();
                 if (value.net === null) { showPanel(true); selectTab('settings'); panel.querySelector('#ql-pricing').open = true; panel.querySelector('#ql-pricing').scrollIntoView({ block: 'nearest' }); panel.querySelector('#ql-api-key').focus(); }
-            } }, { label: 'Åbn næste', run: event => { closePopup(); openOne(event); } }]);
+            } }, { label: 'Open next', run: event => { closePopup(); openOne(event); } }]);
     }
     function showSummary(last = null) {
         if (!records.length) return;
@@ -651,13 +653,13 @@
                     value: entry.value === null || oldLoot?.value === null ? null : (oldLoot?.value || 0) + entry.value });
             }
         }
-        modal(tone, `<div class="ql-result-hero"><div class="ql-result-emblem">${sum.net !== null && sum.net > 0 ? '✦' : '▣'}</div><small>${last ? 'Den valgte runde er færdig' : 'Din opgørelse'}</small><h2 id="ql-dialog-title">${sum.count} containere åbnet</h2><div class="ql-result-number">${signedMoney(sum.net)}</div><span>${sum.complete ? 'Samlet estimeret gevinst / tab' : `${sum.unknown} åbninger mangler fuldt prisgrundlag`}</span></div>
-            <div class="ql-result-stats"><span>Containere brugt<b>${sum.complete ? '' : 'Kendt: '}${money(sum.cost)}</b><small>Forbrugt værdi</small></span><span>Modtaget udbytte<b>${sum.complete ? '' : 'Kendt: '}${money(sum.received)}</b><small>Kontanter + items</small></span><span>Med overskud<b>${sum.wins}</b></span><span>Med underskud<b>${sum.losses}</b></span></div>
-            ${last ? `<p class="ql-result-note"><b>Sidste åbning:</b> ${esc(last.text)}</p>` : ''}<h3>Det fik du</h3>${rewardRows([...loot.values()])}<h3>Det brugte du</h3><ul class="ql-consumed">${[...consumed.values()].map(entry => `<li><span>${entry.qty}× ${esc(entry.name)}</span><b>${entry.unknown ? 'Delvist ukendt' : money(entry.value)}</b></li>`).join('')}</ul><p class="ql-result-note">Markedsværdier er estimater før gebyrer. En angivet købspris erstatter containerens markedsværdi. Prisgrundlaget fastlåses ved hver åbning.</p>`,
-            [{ label: 'Luk opgørelse', run: closePopup }, { label: 'Ny runde', run: () => {
+        modal(tone, `<div class="ql-result-hero"><div class="ql-result-emblem">${sum.net !== null && sum.net > 0 ? '✦' : '▣'}</div><small>${last ? 'This round is complete' : 'Your summary'}</small><h2 id="ql-dialog-title">${sum.count} containers opened</h2><div class="ql-result-number">${signedMoney(sum.net)}</div><span>${sum.complete ? 'Total estimated profit / loss' : `${sum.unknown} openings have incomplete pricing`}</span></div>
+            <div class="ql-result-stats"><span>Containers used<b>${sum.complete ? '' : 'Known: '}${money(sum.cost)}</b><small>Value spent</small></span><span>Rewards received<b>${sum.complete ? '' : 'Known: '}${money(sum.received)}</b><small>Cash + items</small></span><span>Profitable<b>${sum.wins}</b></span><span>Unprofitable<b>${sum.losses}</b></span></div>
+            ${last ? `<p class="ql-result-note"><b>Last opening:</b> ${esc(last.text)}</p>` : ''}<h3>What you received</h3>${rewardRows([...loot.values()])}<h3>What you used</h3><ul class="ql-consumed">${[...consumed.values()].map(entry => `<li><span>${entry.qty}× ${esc(entry.name)}</span><b>${entry.unknown ? 'Partially unknown' : money(entry.value)}</b></li>`).join('')}</ul><p class="ql-result-note">Market values are estimates before fees. A purchase cost overrides the container's market value. Prices are recorded at the time of each opening.</p>`,
+            [{ label: 'Close summary', run: closePopup }, { label: 'New round', run: () => {
                 closePopup(); records.length = 0; log.length = 0; rewardTotals.clear(); opened = 0; cash = 0;
                 for (const item of runtime.values()) item.opened = 0;
-                status = 'Ny runde. Vælg de containere, du vil åbne.'; render();
+                status = 'New round. Choose the containers you want to open.'; render();
             } }]);
     }
     const observer = new MutationObserver(records => {
@@ -670,7 +672,7 @@
         attributes: true, attributeFilter: ['data-item', 'data-qty', 'data-quantity', 'data-name'] });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scan(); else clearTimeout(scanTimer); });
     window.addEventListener('focus', scan);
-    if (typeof GM_registerMenuCommand === 'function') GM_registerMenuCommand('Vis Container Opener', () => showPanel(true));
+    if (typeof GM_registerMenuCommand === 'function') GM_registerMenuCommand('Show Container Opener', () => showPanel(true));
     window.addEventListener('resize', ensureLauncher);
 
     const style = document.createElement('style');
@@ -742,7 +744,7 @@
     }`;
     const doneEditing = document.createElement('button');
     doneEditing.type = 'button'; doneEditing.className = 'ql-edit-done';
-    doneEditing.textContent = 'Færdig';
+    doneEditing.textContent = 'Done';
     panel.querySelector('header').appendChild(doneEditing);
     doneEditing.addEventListener('pointerdown', event => event.preventDefault());
     doneEditing.addEventListener('click', () => {
@@ -775,7 +777,7 @@
     window.visualViewport?.addEventListener('scroll', scheduleEditingViewport);
     window.addEventListener('resize', scheduleEditingViewport);
     document.head.appendChild(mobileLabels);
-    if (Object.keys(prices()).length) panel.querySelector('#ql-price-status').textContent = 'Gemte priser indlæst. Tidligere hentet: ' + new Date(priceData.fetchedAt).toLocaleTimeString();
+    if (Object.keys(prices()).length) panel.querySelector('#ql-price-status').textContent = 'Cached prices loaded. Last fetched: ' + new Date(priceData.fetchedAt).toLocaleTimeString('en-GB');
     render(); scan();
     if (!Object.keys(prices()).length && /^[A-Za-z0-9]{16,64}$/.test(get('ql_container_opener_api_key_v1', ''))) loadPrices();
 })();

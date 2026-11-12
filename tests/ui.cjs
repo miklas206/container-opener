@@ -43,7 +43,7 @@ async function run() {
             assert(primaryBounds.y + primaryBounds.height <= (width === 320 ? 568 : 900), 'CTA stays on screen');
             await page.screenshot({ path: path.join(__dirname, `preview-3.0.2-win-${width}.png`), animations: 'disabled' });
             await page.locator('.ql-dialog-actions .primary').click();
-            await page.waitForFunction(() => document.querySelector('#ql-dialog-title')?.textContent === '2 containere åbnet');
+            await page.waitForFunction(() => document.querySelector('#ql-dialog-title')?.textContent === '2 containers opened');
             assert.equal(calls, 2); assert.match(await page.locator('.ql-result-number').innerText(), /140/);
             assert.match(await page.locator('.ql-consumed').innerText(), /2× Zip Wallet.*2,000/s);
             await page.screenshot({ path: path.join(__dirname, `preview-3.0.2-summary-${width}.png`), animations: 'disabled' });
@@ -80,18 +80,18 @@ async function run() {
         });
         await page.goto('https://www.torn.com/item.php'); await page.bringToFront(); await page.addScriptTag({ content: source });
         await page.locator('[data-field=selected]').check(); await page.locator('#ql-open').click();
-        await page.waitForSelector('.ql-dialog.neutral'); assert.match(await page.locator('.ql-result-number').innerText(), /Pris mangler/);
+        await page.waitForSelector('.ql-dialog.neutral'); assert.match(await page.locator('.ql-result-number').innerText(), /Price unavailable/);
         await page.locator('.ql-dialog-close').click();
         await page.locator('[data-action=api-settings]').click();
         assert.equal(await page.locator('#ql-pricing').getAttribute('open'), '');
         assert.equal(await page.locator('#ql-api-key').evaluate(node => node === document.activeElement), true);
         await page.locator('#ql-api-key').fill('fixtureKey123456'); await page.locator('[data-action=prices]').click();
-        await page.waitForFunction(() => document.querySelector('#ql-price-status').textContent.includes('Priser hentet'));
+        await page.waitForFunction(() => document.querySelector('#ql-price-status').textContent.includes('Prices fetched'));
         await page.locator('#ql-open').click(); await page.waitForSelector('.ql-dialog.loss');
         assert.match(await page.locator('.ql-result-number').innerText(), /990/);
         await page.screenshot({ path: path.join(__dirname, 'preview-3.0.2-loss-390.png'), animations: 'disabled' });
         await page.locator('.ql-dialog-close').click(); await page.locator('[data-action=finish]').click();
-        assert.match(await page.locator('.ql-result-number').innerText(), /Pris mangler/, 'earlier unknown result must not be silently repriced');
+        assert.match(await page.locator('.ql-result-number').innerText(), /Price unavailable/, 'earlier unknown result must not be silently repriced');
         assert.equal(calls, 2); console.log('PASS missing-price neutrality, API opt-in, loss popup and immutable historical valuation');
         await page.close();
     } finally { await browser.close(); }

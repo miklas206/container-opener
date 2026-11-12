@@ -28,7 +28,7 @@ async function run() {
     await test('rapid second press cannot dispatch another request', async () => {
         let resolve, calls = 0; const client = make(() => { calls++; return new Promise(done => resolve = done); });
         const first = client.open(item); assert.equal(client.busy, true);
-        await assert.rejects(client.open(item), /Afvent/); assert.equal(calls, 1);
+        await assert.rejects(client.open(item), /Wait/); assert.equal(calls, 1);
         resolve(response(fixture)); await first;
     });
     await test('confirmed next XID opens only on a new invocation', async () => {
@@ -40,14 +40,14 @@ async function run() {
     });
     await test('used XID is blocked', async () => {
         let calls = 0; const client = make(async () => { calls++; return response(fixture); });
-        await client.open(item); await assert.rejects(client.open(item), /genindlæs/); assert.equal(calls, 1);
+        await client.open(item); await assert.rejects(client.open(item), /reload/); assert.equal(calls, 1);
     });
     await test('timeout: no retry and no XID reuse', async () => {
         let calls = 0; const client = make((url, options) => {
             calls++; return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error(), { name: 'AbortError' }))));
         }, { timeout: 5 });
-        await assert.rejects(client.open(item), /lang tid/); assert.equal(client.busy, false);
-        await assert.rejects(client.open(item), /genindlæs/); assert.equal(calls, 1);
+        await assert.rejects(client.open(item), /timed out/); assert.equal(client.busy, false);
+        await assert.rejects(client.open(item), /reload/); assert.equal(calls, 1);
     });
     await test('HTTP error stops without a retry', async () => {
         let calls = 0; const client = make(async () => { calls++; return { ok: false, status: 403 }; });
@@ -55,7 +55,7 @@ async function run() {
     });
     await test('HTML/login/CAPTCHA response is not reported as an opening', async () => {
         const client = make(async () => ({ ok: true, text: async () => '<html>Login</html>' }));
-        await assert.rejects(client.open(item), /ikke et JSON/);
+        await assert.rejects(client.open(item), /did not return JSON/);
     });
     await test('mismatching type or XID cannot count as a confirmed opening', () => {
         assert.throws(() => readSuccess({ ...fixture, itemID: 199 }, item));
@@ -68,14 +68,14 @@ async function run() {
     });
     await test('inactive tab or missing token dispatches nothing', async () => {
         let calls = 0; const fetchFn = async () => { calls++; return response(fixture); };
-        await assert.rejects(make(fetchFn, { active: () => false }).open(item), /aktive/);
-        await assert.rejects(make(fetchFn, { token: () => '' }).open(item), /ikke klar/);
+        await assert.rejects(make(fetchFn, { active: () => false }).open(item), /active/);
+        await assert.rejects(make(fetchFn, { token: () => '' }).open(item), /not ready/);
         assert.equal(calls, 0);
     });
     await test('network error cannot be retried using the same XID', async () => {
         let calls = 0; const client = make(async () => { calls++; throw new Error('Network offline'); });
         await assert.rejects(client.open(item), /Network offline/);
-        await assert.rejects(client.open(item), /genindlæs/); assert.equal(calls, 1);
+        await assert.rejects(client.open(item), /reload/); assert.equal(calls, 1);
     });
     await test('structured cash excludes dollar figures in prose and item values', () => {
         assert.equal(readSuccess({ ...fixture, text: 'Worth $999999', items: { ...fixture.items,
@@ -94,7 +94,7 @@ async function run() {
     await test('failed type request cannot be repeated in this session', async () => {
         let calls = 0; const client = make(async () => { calls++; throw new Error('offline'); });
         await assert.rejects(client.open({ itemID: '1082' }), /offline/);
-        await assert.rejects(client.open({ itemID: '1082' }), /genindlæs/); assert.equal(calls, 1);
+        await assert.rejects(client.open({ itemID: '1082' }), /reload/); assert.equal(calls, 1);
     });
     await test('string quantities and absent optional response IDs are supported', () => {
         const value = readSuccess({ ...fixture, itemID: undefined, armoryID: undefined,
@@ -109,7 +109,7 @@ async function run() {
     });
     await test('discover and opening cannot run concurrently', async () => {
         let resolve; const client = make(() => new Promise(done => resolve = done));
-        const pending = client.discover(); await assert.rejects(client.open(item), /Afvent/);
+        const pending = client.discover(); await assert.rejects(client.open(item), /Wait/);
         resolve(response({ list: [] })); await pending;
     });
     await test('prices include quantity and cash minus consumed container value', () => {
