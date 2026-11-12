@@ -1,0 +1,11 @@
+/*
+!/.gitignore
+!/container-opener.user.js
+!/README.md
+!/LICENSE
+!/package.json
+!/package-lock.json
+!/tests/
+!/\.github/
+/tests/*
+!/tests/*.cjs
