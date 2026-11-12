@@ -113,3 +113,7 @@ Use `PLAYWRIGHT_MODULE` and `PLAYWRIGHT_EXECUTABLE` to select an existing test r
 ## License
 
 [MIT](LICENSE) · Copyright 2026 slightlylegal.
+
+Result dialogs stay centered in the visible viewport on mobile and PDA. The combined
+round summary uses a separate layout with **Done** as its primary action. **New round**
+only resets the round counters; opening another container still requires a separate press.

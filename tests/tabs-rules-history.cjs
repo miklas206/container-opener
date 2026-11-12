@@ -97,7 +97,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    await page.locator('[data-tab=history]').click();
    assert.match(await page.locator('#ql-history').textContent(),/Zip Wallet.*130/s);
    await page.locator('[data-action=finish]').click();
-   await page.locator('.ql-dialog-actions .primary').click();
+   await page.getByRole('button',{name:'New round',exact:true}).click();
    assert.match(await page.locator('#ql-history').textContent(),/Zip Wallet/,'new round preserves history');
    await page.locator('#qlco-quick-open').click();
    await page.waitForFunction(()=>document.querySelector('#ql-status').textContent.startsWith('Supply Packs loaded.'));

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.10
+// @version      3.1.11
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -266,7 +266,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.10</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.11</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -839,12 +839,24 @@
         const focus = popupReturnFocus?.isConnected && !popupReturnFocus.disabled ? popupReturnFocus : panel.hidden ? launcher : panel.querySelector('[data-action="collapse"]');
         if (!focus.disabled) focus.focus({ preventScroll: true });
     }
-    function modal(tone, content, actions) {
+    function positionPopup() {
+        if (!popup) return;
+        const viewport = window.visualViewport;
+        Object.assign(popup.style, {
+            left: `${viewport?.offsetLeft || 0}px`, top: `${viewport?.offsetTop || 0}px`,
+            width: `${viewport?.width || innerWidth}px`, height: `${viewport?.height || innerHeight}px`,
+            right: 'auto', bottom: 'auto'
+        });
+    }
+    window.visualViewport?.addEventListener('resize', positionPopup);
+    window.visualViewport?.addEventListener('scroll', positionPopup);
+    window.addEventListener('resize', positionPopup);
+    function modal(tone, content, actions, kind = 'opening') {
         if (popup) popup.remove(); else popupReturnFocus = document.activeElement;
         popup = document.createElement('div'); popup.id = 'qlco-result-overlay';
         popup.lang = 'en';
-        popup.innerHTML = `<section class="ql-dialog ${tone}" role="dialog" aria-modal="true" aria-labelledby="ql-dialog-title" tabindex="-1"><button class="ql-dialog-close" aria-label="Close result">×</button><div class="ql-dialog-scroll">${content}</div><div class="ql-dialog-actions">${actions.map((action, index) => `<button data-dialog-action="${index}" class="${index === actions.length - 1 ? 'primary' : ''}">${esc(action.label)}</button>`).join('')}</div></section>`;
-        document.body.appendChild(popup); panel.inert = true; launcher.inert = true;
+        popup.innerHTML = `<section class="ql-dialog ${tone} ql-${kind}" role="dialog" aria-modal="true" aria-labelledby="ql-dialog-title" tabindex="-1"><button class="ql-dialog-close" aria-label="Close result">×</button><div class="ql-dialog-scroll">${content}</div><div class="ql-dialog-actions">${actions.map((action, index) => `<button data-dialog-action="${index}" class="${index === actions.length - 1 ? 'primary' : ''}">${esc(action.label)}</button>`).join('')}</div></section>`;
+        document.body.appendChild(popup); positionPopup(); panel.inert = true; launcher.inert = true;
         popup.querySelector('.ql-dialog-close').addEventListener('click', closePopup);
         popup.querySelectorAll('[data-dialog-action]').forEach(button => button.addEventListener('click', event => actions[Number(button.dataset.dialogAction)].run(event)));
         popup.addEventListener('keydown', event => {
@@ -888,14 +900,14 @@
                     value: entry.value === null || oldLoot?.value === null ? null : (oldLoot?.value || 0) + entry.value });
             }
         }
-        modal(tone, `<div class="ql-result-hero"><div class="ql-result-emblem">${sum.net !== null && sum.net > 0 ? '✦' : '▣'}</div><small>${last ? 'This round is complete' : 'Your summary'}</small><h2 id="ql-dialog-title">${sum.count} containers opened</h2><div class="ql-result-number">${signedMoney(sum.net)}</div><span>${sum.complete ? 'Total estimated profit / loss' : `${sum.unknown} openings have incomplete pricing`}</span></div>
+        modal(tone, `<div class="ql-summary-banner">${last ? '✓ Round complete' : 'Round summary'}</div><div class="ql-result-hero"><small>Combined results · all openings</small><h2 id="ql-dialog-title">${sum.count} containers opened</h2><div class="ql-result-number">${signedMoney(sum.net)}</div><span>${sum.complete ? 'Total estimated profit / loss' : `${sum.unknown} openings have incomplete pricing`}</span></div>
             <div class="ql-result-stats"><span>Containers used<b>${sum.complete ? '' : 'Known: '}${money(sum.cost)}</b><small>Value spent</small></span><span>Rewards received<b>${sum.complete ? '' : 'Known: '}${money(sum.received)}</b><small>Cash + items</small></span><span>Profitable<b>${sum.wins}</b></span><span>Unprofitable<b>${sum.losses}</b></span></div>
             ${last ? `<p class="ql-result-note"><b>Last opening:</b> ${esc(last.text)}</p>` : ''}<h3>What you received</h3>${rewardRows([...loot.values()])}<h3>What you used</h3><ul class="ql-consumed">${[...consumed.values()].map(entry => `<li><span>${entry.qty}× ${esc(entry.name)}</span><b>${entry.unknown ? 'Partially unknown' : money(entry.value)}</b></li>`).join('')}</ul><p class="ql-result-note">Market values are estimates before fees. A purchase cost overrides the container's market value. Prices are recorded at the time of each opening.</p>`,
-            [{ label: 'Close summary', run: closePopup }, { label: 'New round', run: () => {
+            [{ label: 'New round', run: () => {
                 closePopup(); records.length = 0; log.length = 0; rewardTotals.clear(); opened = 0; cash = 0;
                 for (const item of runtime.values()) item.opened = 0;
                 status = 'New round. Your selected items and keep minimums still apply.'; render();
-            } }]);
+            } }, { label: 'Done', run: closePopup }], 'summary');
     }
     const observer = new MutationObserver(records => {
         ensureLauncher();
@@ -934,8 +946,8 @@
     document.head.appendChild(resultStyle);
     const popupStyle = document.createElement('style');
     popupStyle.textContent = `
-        #qlco-result-overlay{position:fixed;inset:0;z-index:2147483645;display:flex;align-items:center;justify-content:center;padding:20px;background:#030710cc;backdrop-filter:blur(6px);font:14px/1.45 Arial,sans-serif;color:#edf4ff;color-scheme:dark}
-        #qlco-result-overlay *{box-sizing:border-box}#qlco-result-overlay .ql-dialog{--accent:#9bbce8;position:relative;display:flex;flex-direction:column;width:min(540px,100%);max-height:90dvh;border:1px solid #465c77;border-radius:22px;background:#111b29;box-shadow:0 24px 100px #000a;overflow:hidden;animation:ql-reveal .24s ease-out}
+        #qlco-result-overlay{box-sizing:border-box;position:fixed;inset:0;z-index:2147483645;display:flex;align-items:center;justify-content:center;padding:20px;background:#030710cc;backdrop-filter:blur(6px);font:14px/1.45 Arial,sans-serif;color:#edf4ff;color-scheme:dark}
+        #qlco-result-overlay *{box-sizing:border-box}#qlco-result-overlay .ql-dialog{--accent:#9bbce8;position:relative;display:flex;flex-direction:column;width:min(540px,100%);max-height:100%;border:1px solid #465c77;border-radius:22px;background:#111b29;box-shadow:0 24px 100px #000a;overflow:hidden;animation:ql-reveal .24s ease-out}
         #qlco-result-overlay .win{--accent:#73e4a3}#qlco-result-overlay .loss{--accent:#f19a9f}#qlco-result-overlay .jackpot{--accent:#ffd579;background:#201d18;border-color:#b78a3c}#qlco-result-overlay .even{--accent:#a7c7f1}
         #qlco-result-overlay .ql-dialog-scroll{padding:25px;overflow:auto;min-height:0;overscroll-behavior:contain}#qlco-result-overlay .ql-dialog-close{position:absolute;right:12px;top:10px;z-index:1;width:40px;height:40px;border:0;border-radius:50%;background:#ffffff0d;color:#fff;font-size:27px;cursor:pointer}
         #qlco-result-overlay .ql-result-hero{text-align:center;padding:8px 12px 20px}#qlco-result-overlay .ql-result-emblem{display:grid;place-items:center;width:70px;height:70px;margin:0 auto 14px;border:1px solid var(--accent);border-radius:22px;color:var(--accent);font-size:38px;background:#ffffff08;box-shadow:0 0 35px #ffffff09}
@@ -944,8 +956,13 @@
         #qlco-result-overlay .ql-result-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}#qlco-result-overlay .ql-result-stats>span{padding:12px;background:#0002;border-radius:10px;color:#b5c4d7;font-size:11px;min-width:0}#qlco-result-overlay .ql-result-stats b{display:block;font-size:19px;color:#fff;overflow-wrap:anywhere}#qlco-result-overlay .ql-result-stats small{display:block;font-size:10px}#qlco-result-overlay .ql-result-note{color:#b5c4d7;font-size:11px;overflow-wrap:anywhere}#qlco-result-overlay .ql-consumed{padding:0;list-style:none}#qlco-result-overlay .ql-consumed li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #ffffff10;font-size:12px}
         #qlco-result-overlay .ql-dialog-actions{display:flex;gap:9px;padding:14px 20px;border-top:1px solid #ffffff13;flex-shrink:0;background:#0002}#qlco-result-overlay .ql-dialog-actions button{flex:1;min-height:48px;padding:10px;border:1px solid #ffffff30;border-radius:10px;background:#ffffff08;color:#fff;font:700 13px Arial,sans-serif;cursor:pointer}#qlco-result-overlay .ql-dialog-actions .primary{background:var(--accent);border-color:var(--accent);color:#111923}#qlco-result-overlay :focus-visible{outline:2px solid #fff;outline-offset:2px}
         #qlco-v2 #ql-finish{width:100%;margin-top:7px;min-height:40px;background:transparent;font-size:12px}#qlco-v2 #ql-pricing p{font-size:11px;color:#b5c4d7}#qlco-v2 #ql-pricing a{color:#a6cdff;font-size:12px}#qlco-v2 .ql-key-label{display:grid;gap:5px;margin:10px 0}#qlco-v2 .ql-key-label input{width:100%}#qlco-v2 .ql-price-actions{display:flex;gap:7px;margin-top:10px}#qlco-v2 .ql-cost-row{display:flex;align-items:center;gap:8px;justify-content:space-between;margin:8px 0;font-size:12px}#qlco-v2 .ql-cost-row input{width:130px}
+        #qlco-result-overlay .ql-summary{background:#132330;border:2px solid #8cbfd4;border-radius:12px}
+        #qlco-result-overlay .ql-summary-banner{margin:-25px -25px 22px;padding:18px 55px 18px 25px;background:#244657;color:#dcf4ff;font-weight:bold;font-size:17px;letter-spacing:.03em;border-bottom:1px solid #8cbfd455}
+        #qlco-result-overlay .ql-summary .ql-result-hero{text-align:left;padding:0 0 18px;border-bottom:1px dashed #8cbfd466}
+        #qlco-result-overlay .ql-summary .ql-dialog-actions .primary{background:#bce0ed;border-color:#bce0ed}
+        @media(max-width:759px){#qlco-result-overlay .ql-summary-banner{margin:-22px -16px 20px;padding-left:16px}}
         @keyframes ql-reveal{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){#qlco-result-overlay .ql-dialog{animation:none}}
-        @media(max-width:759px){#qlco-result-overlay{padding:8px;align-items:flex-end}#qlco-result-overlay .ql-dialog{max-height:calc(100dvh - 16px);border-radius:20px 20px 12px 12px}#qlco-result-overlay .ql-dialog-scroll{padding:22px 16px 16px}#qlco-result-overlay .ql-dialog-actions{padding:12px 14px max(12px,env(safe-area-inset-bottom))}#qlco-result-overlay .ql-dialog-actions button{font-size:14px;min-height:50px}#qlco-v2{max-height:calc(100dvh - 70px);width:100%;border-radius:18px 18px 0 0}#qlco-v2 article{grid-template-columns:1fr 1fr;gap:10px;padding:12px 4px}#qlco-v2 article>.ql-item-name{grid-column:1/-1;font-size:14px}#qlco-v2 article b{font-size:14px}#qlco-v2 article input[type=number]{min-height:44px}#qlco-v2 .ql-columns{display:none}#qlco-v2 article input[data-field=limit]{grid-column:1}#qlco-v2 article input[data-field=keep]{grid-column:2}#qlco-v2 #ql-open{min-height:52px}#qlco-v2 #ql-latest{display:none}#qlco-v2 #ql-finish{min-height:44px}}
+        @media(max-width:759px){#qlco-result-overlay{padding:8px;align-items:center}#qlco-result-overlay .ql-dialog{max-height:100%;border-radius:20px}#qlco-result-overlay .ql-dialog-scroll{padding:22px 16px 16px}#qlco-result-overlay .ql-dialog-actions{padding:12px 14px max(12px,env(safe-area-inset-bottom))}#qlco-result-overlay .ql-dialog-actions button{font-size:14px;min-height:50px}#qlco-v2{max-height:calc(100dvh - 70px);width:100%;border-radius:18px 18px 0 0}#qlco-v2 article{grid-template-columns:1fr 1fr;gap:10px;padding:12px 4px}#qlco-v2 article>.ql-item-name{grid-column:1/-1;font-size:14px}#qlco-v2 article b{font-size:14px}#qlco-v2 article input[type=number]{min-height:44px}#qlco-v2 .ql-columns{display:none}#qlco-v2 article input[data-field=limit]{grid-column:1}#qlco-v2 article input[data-field=keep]{grid-column:2}#qlco-v2 #ql-open{min-height:52px}#qlco-v2 #ql-latest{display:none}#qlco-v2 #ql-finish{min-height:44px}}
     `;
     document.head.appendChild(popupStyle);
     const mobileLabels = document.createElement('style');

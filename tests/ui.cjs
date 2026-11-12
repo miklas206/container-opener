@@ -42,7 +42,10 @@ async function run() {
             assert.equal(await page.locator('li[data-item="1082"]').getAttribute('data-qty'), '2');
             assert.equal(await page.locator('li[data-item="1082"] .qty').textContent(), '2');
             assert.equal(await page.locator('li[data-item="199"] .qty').textContent(), '6');
+            await page.locator('.ql-dialog').evaluate(n=>Promise.all(n.getAnimations().map(a=>a.finished)));
             const bounds = await page.locator('.ql-dialog').boundingBox();
+            assert(Math.abs(bounds.y+bounds.height/2-(width===320?568:900)/2)<2,'opening centered vertically');
+            assert(Math.abs(bounds.x+bounds.width/2-width/2)<2,'opening centered horizontally');
             assert(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width + 1);
             assert.equal(await page.locator('.ql-dialog').evaluate(node => node.scrollWidth > node.clientWidth + 1), false);
             const primaryBounds = await page.locator('.ql-dialog-actions .primary').boundingBox();
@@ -52,9 +55,22 @@ async function run() {
             await page.waitForFunction(() => document.querySelector('#ql-dialog-title')?.textContent === '2 containers opened');
             assert.equal(await page.locator('li[data-item="1082"] .qty').textContent(), '1');
             assert.equal(await page.locator('li[data-item="199"] .qty').textContent(), '6');
+            assert.equal(await page.locator('.ql-summary').count(),1,'summary has a distinct layout');
+            assert.equal(await page.locator('.ql-dialog-actions .primary').textContent(),'Done');
+            assert.equal(await page.getByRole('button',{name:'Open next',exact:true}).count(),0);
             assert.equal(calls, 2); assert.match(await page.locator('.ql-result-number').innerText(), /140/);
             assert.match(await page.locator('.ql-consumed').innerText(), /2× Zip Wallet.*2,000/s);
             await page.screenshot({ path: path.join(__dirname, `preview-3.0.2-summary-${width}.png`), animations: 'disabled' });
+            await page.setViewportSize({width,height:480});
+            await page.waitForFunction(()=>{
+                const r=document.querySelector('.ql-dialog').getBoundingClientRect();
+                const v=visualViewport;
+                return Math.abs(r.y+r.height/2-v.offsetTop-v.height/2)<2 && r.height<=v.height;
+            });
+            const doneBounds=await page.locator('.ql-dialog-actions .primary').boundingBox();
+            assert(doneBounds.y+doneBounds.height<=480,'summary Done remains on screen after resize');
+            await page.setViewportSize({width,height:width===320?568:900});
+
             await page.locator('.ql-dialog-close').click();
             await page.locator('#ql-open').click();
             await page.waitForFunction(() => document.querySelector('#ql-status').textContent.startsWith('Supply Packs loaded.'));
@@ -62,6 +78,10 @@ async function run() {
             await page.locator('[data-action=finish]').click();
             assert.equal(calls, 2, 'summary dispatches no game requests');
             await page.locator('.ql-dialog-actions .primary').click();
+            assert.equal(await page.locator('#ql-count').textContent(), '2', 'Done keeps the completed round');
+            assert.equal(calls, 2, 'Done never opens another container');
+            await page.locator('[data-action=finish]').click();
+            await page.getByRole('button', {name:'New round',exact:true}).click();
             assert.equal(await page.locator('#ql-count').textContent(), '0');
             await page.locator('[data-action=collapse]').click(); await page.locator('#qlco-dock-button').click();
             assert.equal(await page.locator('#qlco-v2').isVisible(), true);
