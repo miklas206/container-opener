@@ -19,6 +19,7 @@ for(const width of [320,390])for(const saved of [false,true]){
  await page.locator('.ql-edit-done').click();assert.equal(await page.locator('#qlco-v2>footer').isVisible(),true);
  await page.locator('#ql-pricing').evaluate(n=>n.open=false);
  await page.locator('[data-tab=rules]').click();
+ if(!saved) await page.locator('[data-allow="Old Wallet"]').check();
  const number=page.locator('[data-field=keep]').first();await number.focus();
  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  const box=await number.boundingBox();assert(box.y>=120&&box.y+box.height<=330,JSON.stringify(box));

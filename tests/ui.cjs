@@ -84,7 +84,7 @@ async function run() {
                 nextArmoryId: calls === 1 ? 21868925758 : 21868925759, isAnotherAvailable: true, text: 'You received $10', items: { itemDisappear: [{ ID: 1082, qty: 1 }], itemAppear: [{ isMoney: true, moneyGain: '$10' }] } }) });
         });
         await page.goto('https://www.torn.com/item.php'); await page.bringToFront(); await page.addScriptTag({ content: source });
-        await page.locator('#ql-open').click();
+        await page.locator('[data-allow="Zip Wallet"]').check(); await page.locator('#ql-open').click();
         await page.waitForSelector('.ql-dialog.neutral'); assert.match(await page.locator('.ql-result-number').innerText(), /Price unavailable/);
         await page.locator('.ql-dialog-close').click();
         await page.locator('[data-action=api-settings]').click();

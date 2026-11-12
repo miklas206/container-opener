@@ -10,9 +10,9 @@ your rewards. One press opens one container.
 
 ## Features
 
-- **Rules** — check a container in **Blacklist** to block it. Unchecked containers
-  show a **Keep at least** field beside their name. Set rules even before you own
-  the item. Optional **Round limit** controls are available for allowed items.
+- **Rules** — choose containers in **Items to open**. Only checked items may be
+  opened, and only checked items show **Keep at least** and optional **Round limit**
+  controls. Your choices are saved, including for items you do not currently own.
 - **Settings** — manage your optional Torn API key, item prices, purchase costs
   and opening button position.
 - **History** — view the last 500 confirmed openings with timestamps, rewards
@@ -25,23 +25,23 @@ your rewards. One press opens one container.
 - **Mobile layout** — responsive tabs and forms, including adjustments for the
   on-screen keyboard.
 
-Supports known wallets, supply packs, caches, gifts and parcels. Some container
-types are blocked by default; review **Blacklist** before enabling them.
+Supports known wallets, supply packs, caches, gifts and parcels. New installations
+start with no items selected. Newly supported types stay off until you select them.
 
 ## Getting started
 
 1. Install the script in your userscript manager or add it to Torn PDA.
 2. Open Torn's **Items** page and select **Find my containers**. You can also
    open an inventory category for the panel to detect its containers.
-3. All detected types are included automatically unless blacklisted. In **Rules**,
-   check unwanted types in **Blacklist**. For unchecked types, enter **Keep at least**.
-   Blocking a type hides its quantity controls without deleting the saved values.
+3. In **Rules → Items to open**, check the types you want to open and enter
+   **Keep at least**. Unchecked items are never opened and have no quantity fields.
 4. Press **Open**. Each press opens one eligible container; nothing repeats
    automatically.
 
-You do not need to select containers each time. Saved blacklists and limits apply
-automatically, including to newly detected containers. Older per-item selection
-flags are ignored; existing blacklists and quantity limits are preserved.
+Selections and limits are saved for future visits. Unchecking an item hides its
+quantity controls without deleting the saved values. Updating from the previous
+blacklist version converts previously allowed types to checked items and leaves
+previously blocked types unchecked. Existing minimums and round limits are retained.
 
 For example, if you have 10 wallets and set **Keep at least** to 3, opening stops
 when 3 remain. If the quantity is unknown, a keep minimum blocks opening until

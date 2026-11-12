@@ -30,14 +30,23 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    });
    await page.addScriptTag({content:source});
    assert.equal(await page.locator('#qlco-quick-open').isVisible(),false);
+   if (!upgrade) {
+    assert.equal(await page.locator('[data-allow]:checked').count(),0,'new installations start with no items selected');
+    assert.equal(await page.locator('#ql-open').isDisabled(),true);
+    assert.equal(await page.locator('[data-field=keep]').count(),0);
+    for (const name of ['Zip Wallet','Old Wallet','Clutch']) await page.locator('[data-allow="'+name+'"]').check();
+   } else {
+    assert.equal(await page.locator('[data-allow="Donator Pack"]').isChecked(),false,'old blacklist remains excluded');
+   }
+
    assert.equal(await page.locator('[data-field=selected]').count(),0,'no per-item opt-in');
-   assert.equal(await page.locator('#ql-open').textContent(),'Open Zip Wallet','fresh and formerly deselected containers are eligible');
-   await page.locator('[data-block="Zip Wallet"]').check();
+   assert.equal(await page.locator('#ql-open').textContent(),'Open Zip Wallet','selected and migrated containers are eligible');
+   await page.locator('[data-allow="Zip Wallet"]').uncheck();
    assert.equal(await page.locator('[data-name="Zip Wallet"] [data-field=keep]').count(),0,'blocked items have no minimum field');
-   assert.equal(await page.locator('#ql-open').textContent(),'Open Old Wallet','automatically moves to next non-blacklisted type');
-   await page.locator('[data-block="Old Wallet"]').check();
-   assert.equal(await page.locator('#ql-open').isDisabled(),true,'blacklist blocks every type');
-   await page.locator('[data-block="Zip Wallet"]').uncheck();
+   assert.equal(await page.locator('#ql-open').textContent(),'Open Old Wallet','automatically moves to next selected type');
+   await page.locator('[data-allow="Old Wallet"]').uncheck();
+   assert.equal(await page.locator('#ql-open').isDisabled(),true,'no selections blocks every type');
+   await page.locator('[data-allow="Zip Wallet"]').check();
    assert.equal(await page.locator('#ql-open').textContent(),'Open Zip Wallet');
    assert.equal(await page.locator('[data-name="Zip Wallet"] [data-field=keep]').inputValue(),upgrade?'2':'0','unblocking preserves minimum');
    assert.equal(await page.locator('[data-name="Clutch"] [data-field=keep]').count(),1,'rules available before item is owned');
@@ -45,9 +54,9 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    await page.locator('[data-name="Clutch"] [data-field=keep]').press('Tab');
    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
    if (await page.locator('.ql-edit-done').isVisible()) await page.locator('.ql-edit-done').click();
-   await page.locator('[data-block="Clutch"]').check();
+   await page.locator('[data-allow="Clutch"]').uncheck();
    assert.equal(await page.locator('[data-name="Clutch"] [data-field=keep]').count(),0);
-   await page.locator('[data-block="Clutch"]').uncheck();
+   await page.locator('[data-allow="Clutch"]').check();
    assert.equal(await page.locator('[data-name="Clutch"] [data-field=keep]').inputValue(),'7');
 
 
@@ -58,7 +67,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    assert.equal(await page.locator('[data-name="Zip Wallet"] [data-field=keep]').inputValue(),'2');
    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
    if (await page.locator('.ql-edit-done').isVisible()) await page.locator('.ql-edit-done').click();
-   await page.screenshot({path:path.join(__dirname,'blacklist-'+width+'-'+upgrade+'.png')});
+   await page.screenshot({path:path.join(__dirname,'items-to-open-'+width+'-'+upgrade+'.png')});
    await page.locator('[data-tab=settings]').click();
    assert.equal(await page.locator('#ql-api-key').isVisible(),true);
    await page.locator('#ql-quick-enabled').check();
@@ -87,7 +96,14 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    await page.locator('.ql-dialog-actions .primary').click();
    assert.match(await page.locator('#ql-history').textContent(),/Zip Wallet/,'new round preserves history');
    assert.equal(await page.locator('#qlco-quick-open').isDisabled(),true,'new round cannot bypass minimum');
-   await page.reload(); await page.addScriptTag({content:source});
+   await page.reload(); await page.addScriptTag({content:source.replace("'Drug Pack',", "'Future Container', 'Drug Pack',")});
+   assert.equal(await page.locator('[data-allow="Future Container"]').isChecked(),false,'new item types require explicit selection');
+
+   assert.equal(await page.locator('[data-allow="Old Wallet"]').isChecked(),false,'unchecked selection survives reload');
+   assert.equal(await page.locator('[data-name="Old Wallet"] [data-field=keep]').count(),0);
+   assert.equal(await page.locator('[data-allow="Zip Wallet"]').isChecked(),true);
+   assert.equal(await page.locator('[data-name="Zip Wallet"] [data-field=keep]').inputValue(),'2');
+
    await page.locator('[data-tab=history]').click();
    assert.match(await page.locator('#ql-history').textContent(),/Zip Wallet.*130/s);
    assert.equal(await page.locator('#ql-history li').count(),1);

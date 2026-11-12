@@ -17,6 +17,7 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
   await r.fulfill({contentType:'application/json',body:JSON.stringify({success:true,itemID:1082,armoryID:21899289699,nextArmoryId:21868925758,isAnotherAvailable:scenario!=='last',text:'You received $10',items:{itemDisappear:[{ID:1082,qty:1}],itemAppear:[{isMoney:true,moneyGain:'$10'}]}})});
  });
  await page.goto('https://www.torn.com/item.php');await page.addScriptTag({content:source});
+ await page.locator('[data-allow="Zip Wallet"]').check();
  await page.locator('#ql-open').click();
  if(scenario==='failed'){
   await page.waitForFunction(()=>document.querySelector('#ql-status').textContent.includes('HTTP 500'));
