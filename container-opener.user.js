@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.3
+// @version      3.1.4
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -240,7 +240,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.3</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.4</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -257,7 +257,7 @@
         </section>
         <section id="ql-page-settings" role="tabpanel" aria-labelledby="ql-tab-settings" hidden>
         <h3>Opening button</h3><label class="ql-button-setting"><input id="ql-quick-enabled" type="checkbox" ${prefs.quickButton ? 'checked' : ''}> Show an Open button on the Items page</label>
-        <label class="ql-key-label">Button position<select id="ql-quick-placement"><option value="inventory">Top of inventory</option><option value="floating">Floating — movable</option></select></label>
+        <label class="ql-key-label">Button position<select id="ql-quick-placement"><option value="inventory">By categories and search</option><option value="floating">Floating — movable</option></select></label>
         <p class="ql-help">In floating mode, drag the move handle with your mouse or finger. Arrow keys also move it. Your position is saved on this device.</p>
         <button data-action="reset-position">Reset floating position</button>
         <p class="ql-help">One press opens the next eligible container according to your Rules. The button also works with the panel hidden. Keep at least and Open up to apply to both buttons.</p>
@@ -338,14 +338,17 @@
                 quickPosition ? 8 + quickPosition.y * Math.max(0, innerHeight - quickBar.offsetHeight - 16) : innerHeight - quickBar.offsetHeight - 60);
         } else {
             quickBar.style.left = ''; quickBar.style.top = ''; quickBar.style.bottom = '';
-            // Prefer Torn's Items heading; otherwise stay in document flow above the inventory list.
+            // Stay below the category/search controls, immediately before Torn's item lists.
+            const categories = document.querySelector('#category-wrap, .category-wrap');
             const heading = document.querySelector('#mainContainer .content-title, #mainContainer h4, #mainContainer h1');
             const row = document.querySelector('li[data-item], [data-item-id], [data-itemid]');
             const list = row?.closest('ul, table');
-            if (heading && !heading.closest('#qlco-v2')) {
-                if (heading.nextElementSibling !== quickBar) heading.after(quickBar);
+            if (categories && !categories.closest('#qlco-v2')) {
+                if (categories.previousElementSibling !== quickBar) categories.before(quickBar);
             } else if (list && !list.closest('#qlco-v2')) {
                 if (list.previousElementSibling !== quickBar) list.before(quickBar);
+            } else if (heading && !heading.closest('#qlco-v2')) {
+                if (heading.nextElementSibling !== quickBar) heading.after(quickBar);
             } else {
                 const host = document.querySelector('#mainContainer') || document.body;
                 if (quickBar.parentElement !== host || host.firstElementChild !== quickBar) host.prepend(quickBar);

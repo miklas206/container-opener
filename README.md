@@ -17,7 +17,7 @@ your rewards. One press opens one container.
 - **History** — view the last 500 confirmed openings with timestamps, rewards
   and estimated profit or loss, saved across page reloads and new rounds.
 - **Positionable Open button** — open the next eligible container with the panel
-  hidden. Place it at the top of inventory or use a movable floating button.
+  hidden. Place it by the inventory categories and search or use a movable floating button.
   Both opening buttons follow the same rules.
 - **Results and summaries** — see rewards after each opening and review the
   containers consumed, cash received and item values for the round.
@@ -47,8 +47,8 @@ the inventory quantity is available. **Open up to** limits apply to the current
 round and reset when you choose **New round**.
 
 To open containers while the panel is hidden, enable **Show an Open button
-on the Items page** in **Settings**. **Button position** defaults to **Top of
-inventory**, where the button stays in the page layout instead of covering items.
+on the Items page** in **Settings**. **Button position** defaults to **By categories and search**, placing the button below those controls and above
+the item list without covering items.
 Choose **Floating — movable** to drag its separate move handle with your mouse or
 finger. You can also focus the handle and use arrow keys (Shift moves faster).
 The floating position is saved on this device and kept within the screen when

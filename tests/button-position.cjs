@@ -13,7 +13,7 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
  });
  await page.route('**/*',r=>{
   if(r.request().method()==='POST')posts++;
-  return r.fulfill({contentType:'text/html',body:'<!doctype html><body style="margin:0"><main id="mainContainer"><h1>Items</h1><ul><li data-item="1082" data-qty="3"><span class="name-wrap">Zip Wallet</span></li></ul></main></body>'});
+  return r.fulfill({contentType:'text/html',body:'<!doctype html><body style="margin:0"><main id="mainContainer"><h1>Items</h1><section style="height:100px">Equipped items</section><nav id="inventory-controls"><button>Supply Packs</button><input type="search" placeholder="Search items"></nav><div id="category-wrap"><ul><li data-item="1082" data-qty="3"><span class="name-wrap">Zip Wallet</span></li></ul></div></main></body>'});
  });
  await page.goto('https://www.torn.com/item.php');
  await page.evaluate(()=>{
@@ -21,7 +21,7 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
   GM_setValue('ql_container_opener_panel_v2',{hidden:true});
  });
  await page.addScriptTag({content:source});
- assert.equal(await page.locator('#mainContainer h1 + #qlco-quick-bar').count(),1);
+ assert.equal(await page.locator('#inventory-controls + #qlco-quick-bar + #category-wrap').count(),1);
  assert.equal(await page.locator('#qlco-quick-bar').evaluate(n=>getComputedStyle(n).position),'static');
  assert.equal(await page.locator('#qlco-move-handle').isVisible(),false);
  await page.locator('#qlco-dock-button').click();
@@ -55,8 +55,13 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
  await page.locator('#qlco-dock-button').click();await page.locator('[data-tab=settings]').click();
  await page.locator('#ql-quick-placement').selectOption('inventory');
  await page.locator('[data-action=collapse]').click();
- await page.evaluate(()=>document.querySelector('#mainContainer').innerHTML='<h1>Items refreshed</h1><ul><li data-item="1082" data-qty="2"><span class="name-wrap">Zip Wallet</span></li></ul>');
- await page.waitForSelector('#mainContainer h1 + #qlco-quick-bar');
+ await page.evaluate(()=>document.querySelector('#mainContainer').innerHTML='<h1>Items refreshed</h1><nav id="inventory-controls"><input type="search" placeholder="Search items"></nav><div id="category-wrap"><ul><li data-item="1082" data-qty="2"><span class="name-wrap">Zip Wallet</span></li></ul></div>');
+ await page.waitForSelector('#inventory-controls + #qlco-quick-bar + #category-wrap');
+ // An empty category still provides the anchor, and controls remain usable.
+ await page.locator('#category-wrap').evaluate(n=>n.innerHTML='<p>No items found</p>');
+ await page.locator('#inventory-controls input').fill('wallet');
+ assert.equal(await page.locator('#inventory-controls + #qlco-quick-bar + #category-wrap').count(),1);
+ assert.equal(await page.locator('#qlco-quick-bar').count(),1);
  assert.equal(posts,0);
  await page.screenshot({path:path.join(__dirname,'button-inventory-'+width+'.png')});
  assert.deepEqual(errors,[]);await page.close();
