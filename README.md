@@ -38,7 +38,9 @@ start with no items selected. Newly supported types stay off until you select th
 4. Press **Open**. The button activates the **Supply Packs** category and waits
    for its item list to become visible and finish loading, then loads all inventory pages,
    then opens one eligible container using the fresh quantities. It never repeats
-   openings automatically. A failed category switch, timeout, incomplete inventory
+   openings automatically. Loading remains available when no items are selected or
+   a minimum/round limit has been reached; those rules still prevent opening.
+   A failed category switch, timeout, incomplete inventory
    read, or leaving Supply Packs before the read completes opens nothing.
 
 Selections and limits are saved for future visits. Unchecking an item hides its

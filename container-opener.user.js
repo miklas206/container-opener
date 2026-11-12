@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.8
+// @version      3.1.9
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -207,7 +207,7 @@
     const runtime = new Map();
     const log = [];
     let filter = 'all', status = 'Detected containers follow your selected items and limits. One press opens one item.', opened = 0, cash = 0;
-    let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true, loading = false, inventoryLoaded = false;
+    let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true, loading = false;
     const rewardTotals = new Map();
     const records = [];
     const storedHistory = get('ql_container_opener_history_v1', []);
@@ -266,7 +266,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.8</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.9</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -525,10 +525,10 @@
         panel.querySelector('#ql-status').textContent = !halted && !client.busy && item && !findToken()
             ? 'Torn is not ready yet. Reload the Items page if this message persists.' : status;
         const open = panel.querySelector('#ql-open');
-        open.disabled = client.busy || loading || pricesLoading || halted || !!popup || (!item && (inventoryLoaded || !prefs.allowedItems.length)) || !findToken();
+        open.disabled = client.busy || loading || pricesLoading || halted || !!popup || !findToken();
         panel.querySelector('#ql-finish').disabled = client.busy || !records.length;
         panel.querySelector('#ql-price-state').textContent = pricesLoading ? '· loading…' : Object.keys(prices()).length ? '· ready' : '· not enabled';
-        open.textContent = loading ? 'Loading Supply Packs…' : client.busy ? 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : !inventoryLoaded && prefs.allowedItems.length ? 'Load Supply Packs and open' : 'No eligible containers · check inventory or Rules';
+        open.textContent = loading ? 'Loading Supply Packs…' : client.busy ? 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : 'Load Supply Packs and open';
         quickOpen.hidden = !prefs.quickButton;
         quickOpen.disabled = open.disabled;
         quickOpen.textContent = open.textContent;
@@ -785,7 +785,6 @@
             if (!supplyPackList()) throw new Error('Supply Packs is no longer visible. Nothing was opened.');
             // Only a complete, current Supply Packs list may choose an opening target.
             runtime.clear();
-            inventoryLoaded = true;
             for (const [name, item] of found) runtime.set(name, { ...item, supplyPack: true });
             status = found.size ? `${found.size} types found. Your selected items and limits apply automatically. Press Open when ready.` : 'No known containers found. Open the relevant category in Torn for the panel to detect them.';
             return true;

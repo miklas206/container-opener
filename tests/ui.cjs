@@ -56,7 +56,9 @@ async function run() {
             assert.match(await page.locator('.ql-consumed').innerText(), /2× Zip Wallet.*2,000/s);
             await page.screenshot({ path: path.join(__dirname, `preview-3.0.2-summary-${width}.png`), animations: 'disabled' });
             await page.locator('.ql-dialog-close').click();
-            assert.equal(await page.locator('#ql-open').isDisabled(), true, 'round limit respected');
+            await page.locator('#ql-open').click();
+            await page.waitForFunction(() => document.querySelector('#ql-status').textContent.startsWith('Supply Packs loaded.'));
+            assert.equal(calls, 2, 'refresh cannot bypass round limit');
             await page.locator('[data-action=finish]').click();
             assert.equal(calls, 2, 'summary dispatches no game requests');
             await page.locator('.ql-dialog-actions .primary').click();

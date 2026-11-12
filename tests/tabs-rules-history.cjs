@@ -34,7 +34,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    assert.equal(await page.locator('#qlco-quick-open').isVisible(),false);
    if (!upgrade) {
     assert.equal(await page.locator('[data-allow]:checked').count(),0,'new installations start with no items selected');
-    assert.equal(await page.locator('#ql-open').isDisabled(),true);
+    assert.equal(await page.locator('#ql-open').isDisabled(),false,'inventory loading stays available');
     assert.equal(await page.locator('[data-field=keep]').count(),0);
     for (const name of ['Zip Wallet','Old Wallet','Clutch']) await page.locator('[data-allow="'+name+'"]').check();
    } else {
@@ -89,15 +89,19 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    await page.waitForSelector('#qlco-result-overlay');
    assert.equal(calls,1);
    await page.locator('.ql-dialog-close').click();
-   assert.equal(await page.locator('#qlco-quick-open').isDisabled(),true,'keep minimum prevents second opening');
+   await page.locator('#qlco-quick-open').click();
+   await page.waitForFunction(()=>document.querySelector('#ql-status').textContent.startsWith('Supply Packs loaded.'));
+   assert.equal(calls,1,'keep minimum prevents second opening');
    await page.locator('#qlco-dock-button').click();
-   assert.equal(await page.locator('#ql-open').isDisabled(),true);
+   assert.equal(await page.locator('#ql-open').isDisabled(),false,'inventory loading stays available');
    await page.locator('[data-tab=history]').click();
    assert.match(await page.locator('#ql-history').textContent(),/Zip Wallet.*130/s);
    await page.locator('[data-action=finish]').click();
    await page.locator('.ql-dialog-actions .primary').click();
    assert.match(await page.locator('#ql-history').textContent(),/Zip Wallet/,'new round preserves history');
-   assert.equal(await page.locator('#qlco-quick-open').isDisabled(),true,'new round cannot bypass minimum');
+   await page.locator('#qlco-quick-open').click();
+   await page.waitForFunction(()=>document.querySelector('#ql-status').textContent.startsWith('Supply Packs loaded.'));
+   assert.equal(calls,1,'new round cannot bypass minimum');
    await page.reload(); await page.addScriptTag({content:source.replace("'Drug Pack',", "'Future Container', 'Drug Pack',")});
    assert.equal(await page.locator('[data-allow="Future Container"]').isChecked(),false,'new item types require explicit selection');
 
