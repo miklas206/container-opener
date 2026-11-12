@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.11
+// @version      3.1.12
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -214,6 +214,7 @@
     const history = Array.isArray(storedHistory) ? storedHistory.filter(entry =>
         entry && typeof entry.name === 'string' && typeof entry.text === 'string' &&
         Number.isFinite(entry.openedAt)).slice(0, 500) : [];
+    let popupPending = false;
     let popup = null, popupReturnFocus = null, pricesLoading = false;
     const cachedPrices = get('ql_container_opener_prices_v1', {});
     let priceData = cachedPrices?.items && Number(cachedPrices.fetchedAt) > Date.now() - 3600000
@@ -266,7 +267,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.11</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.12</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -605,12 +606,12 @@
         }
     }
 
-    async function openOne(event) {
+    async function openOne(event, fromPopup = false) {
         // Reject programmatic clicks; holding a key does not generate repeated openings.
-        if (!event.isTrusted || client.busy || loading || pricesLoading || halted || popup) return;
+        if (!event.isTrusted || client.busy || loading || pricesLoading || halted || (popup && !fromPopup)) return;
         if (!await loadInventory()) return;
         const item = next();
-        if (!item) { status = 'Supply Packs loaded. No selected containers are above your keep minimum or within your round limit.'; render(); return; }
+        if (!item) { status = 'Supply Packs loaded. No selected containers are above your keep minimum or within your round limit.'; if (fromPopup) showSummary(); render(); return; }
         // Snapshot every available price before dispatch, so a later price refresh
         // cannot silently change the accounting for a completed opening.
         const catalog = prices();
@@ -833,7 +834,7 @@
         finally { pricesLoading = false; render(true); }
     }
     function closePopup() {
-        if (!popup) return;
+        if (!popup || popupPending) return;
         popup.remove(); popup = null; panel.inert = false; launcher.inert = false;
         render(true);
         const focus = popupReturnFocus?.isConnected && !popupReturnFocus.disabled ? popupReturnFocus : panel.hidden ? launcher : panel.querySelector('[data-action="collapse"]');
@@ -852,24 +853,56 @@
     window.visualViewport?.addEventListener('scroll', positionPopup);
     window.addEventListener('resize', positionPopup);
     function modal(tone, content, actions, kind = 'opening') {
-        if (popup) popup.remove(); else popupReturnFocus = document.activeElement;
-        popup = document.createElement('div'); popup.id = 'qlco-result-overlay';
-        popup.lang = 'en';
-        popup.innerHTML = `<section class="ql-dialog ${tone} ql-${kind}" role="dialog" aria-modal="true" aria-labelledby="ql-dialog-title" tabindex="-1"><button class="ql-dialog-close" aria-label="Close result">×</button><div class="ql-dialog-scroll">${content}</div><div class="ql-dialog-actions">${actions.map((action, index) => `<button data-dialog-action="${index}" class="${index === actions.length - 1 ? 'primary' : ''}">${esc(action.label)}</button>`).join('')}</div></section>`;
-        document.body.appendChild(popup); positionPopup(); panel.inert = true; launcher.inert = true;
+        const updating = !!popup;
+        if (!popup) {
+            popupReturnFocus = document.activeElement;
+            popup = document.createElement('div'); popup.id = 'qlco-result-overlay'; popup.lang = 'en';
+            popup.innerHTML = '<section role="dialog" aria-modal="true" aria-labelledby="ql-dialog-title" tabindex="-1"></section>';
+            document.body.appendChild(popup);
+        }
+        const dialog = popup.querySelector('section');
+        dialog.className = `ql-dialog ${tone} ql-${kind}`;
+        if (updating) dialog.style.animation = 'none';
+        dialog.innerHTML = `<button class="ql-dialog-close" aria-label="Close result">×</button><div class="ql-dialog-scroll">${content}</div><p class="ql-popup-status" role="status" hidden></p><div class="ql-dialog-actions">${actions.map((action, index) => `<button data-dialog-action="${index}" class="${index === actions.length - 1 ? 'primary' : ''}">${esc(action.label)}</button>`).join('')}</div>`;
+        positionPopup(); panel.inert = true; launcher.inert = true;
+        // Keep the frame and Open next target stationary across changing rewards.
+        if (!updating) dialog.style.height = `${dialog.offsetHeight}px`;
         popup.querySelector('.ql-dialog-close').addEventListener('click', closePopup);
         popup.querySelectorAll('[data-dialog-action]').forEach(button => button.addEventListener('click', event => actions[Number(button.dataset.dialogAction)].run(event)));
-        popup.addEventListener('keydown', event => {
+        popup.onkeydown = event => {
             if (event.key === 'Escape') { event.preventDefault(); closePopup(); }
             if (event.key === 'Tab') {
                 const buttons = [...popup.querySelectorAll('button:not(:disabled)')];
+                if (!buttons.length) { event.preventDefault(); popup.querySelector('.ql-dialog').focus(); return; }
                 const first = buttons[0], last = buttons[buttons.length - 1];
                 if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
                 else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
             }
             if (event.repeat && ['Enter', ' '].includes(event.key)) event.preventDefault();
-        });
-        popup.querySelector('.ql-dialog-close').focus({ preventScroll: true }); render(true);
+        };
+        (updating ? kind === 'opening' ? popup.querySelector('.ql-dialog-actions .primary') : dialog : popup.querySelector('.ql-dialog-close')).focus({ preventScroll: true }); render(true);
+    }
+    async function openNextInPopup(event) {
+        if (!event.isTrusted || popupPending || !popup || halted || client.busy || loading) return;
+        popupPending = true;
+        const current = popup;
+        current.setAttribute('aria-busy', 'true');
+        current.querySelectorAll('button').forEach(button => button.disabled = true);
+        const message = current.querySelector('.ql-popup-status');
+        message.hidden = false; message.textContent = 'Opening next container…';
+        try { await openOne(event, true); }
+        finally {
+            popupPending = false;
+            if (popup === current) {
+                current.removeAttribute('aria-busy');
+                current.querySelectorAll('button').forEach(button => button.disabled = false);
+                // If the content was not replaced, expose the failure without closing the dialog.
+                if (message.isConnected) {
+                    message.textContent = status;
+                    current.querySelector('.ql-dialog-actions .primary').disabled = halted;
+                }
+            }
+        }
     }
     function toneFor(net, cost) { return net === null ? 'neutral' : net < 0 ? 'loss' : net === 0 ? 'even' : cost > 0 && net >= cost * .5 ? 'jackpot' : 'win'; }
     function rewardRows(entries) {
@@ -884,7 +917,7 @@
             [{ label: value.net === null ? 'Enable prices' : 'Back to the list', run: () => {
                 closePopup();
                 if (value.net === null) { showPanel(true); selectTab('settings'); panel.querySelector('#ql-pricing').open = true; panel.querySelector('#ql-pricing').scrollIntoView({ block: 'nearest' }); panel.querySelector('#ql-api-key').focus(); }
-            } }, { label: 'Open next', run: event => { closePopup(); openOne(event); } }]);
+            } }, { label: 'Open next', run: openNextInPopup }]);
     }
     function showSummary(last = null) {
         if (!records.length) return;
@@ -949,13 +982,17 @@
         #qlco-result-overlay{box-sizing:border-box;position:fixed;inset:0;z-index:2147483645;display:flex;align-items:center;justify-content:center;padding:20px;background:#030710cc;backdrop-filter:blur(6px);font:14px/1.45 Arial,sans-serif;color:#edf4ff;color-scheme:dark}
         #qlco-result-overlay *{box-sizing:border-box}#qlco-result-overlay .ql-dialog{--accent:#9bbce8;position:relative;display:flex;flex-direction:column;width:min(540px,100%);max-height:100%;border:1px solid #465c77;border-radius:22px;background:#111b29;box-shadow:0 24px 100px #000a;overflow:hidden;animation:ql-reveal .24s ease-out}
         #qlco-result-overlay .win{--accent:#73e4a3}#qlco-result-overlay .loss{--accent:#f19a9f}#qlco-result-overlay .jackpot{--accent:#ffd579;background:#201d18;border-color:#b78a3c}#qlco-result-overlay .even{--accent:#a7c7f1}
-        #qlco-result-overlay .ql-dialog-scroll{padding:25px;overflow:auto;min-height:0;overscroll-behavior:contain}#qlco-result-overlay .ql-dialog-close{position:absolute;right:12px;top:10px;z-index:1;width:40px;height:40px;border:0;border-radius:50%;background:#ffffff0d;color:#fff;font-size:27px;cursor:pointer}
+        #qlco-result-overlay .ql-dialog-scroll{flex:1;padding:25px;overflow:auto;min-height:0;overscroll-behavior:contain}#qlco-result-overlay .ql-dialog-close{position:absolute;right:12px;top:10px;z-index:1;width:40px;height:40px;border:0;border-radius:50%;background:#ffffff0d;color:#fff;font-size:27px;cursor:pointer}
         #qlco-result-overlay .ql-result-hero{text-align:center;padding:8px 12px 20px}#qlco-result-overlay .ql-result-emblem{display:grid;place-items:center;width:70px;height:70px;margin:0 auto 14px;border:1px solid var(--accent);border-radius:22px;color:var(--accent);font-size:38px;background:#ffffff08;box-shadow:0 0 35px #ffffff09}
         #qlco-result-overlay .jackpot .ql-result-emblem{box-shadow:0 0 45px #ffd57933;transform:rotate(-8deg)}#qlco-result-overlay .ql-result-hero small{display:block;color:#b2c1d5;text-transform:uppercase;letter-spacing:.09em;font-size:10px}#qlco-result-overlay h2{font-size:clamp(21px,5vw,29px);margin:7px 0;line-height:1.15;color:#fff}#qlco-result-overlay h3{font-size:15px;margin:20px 0 8px}#qlco-result-overlay .ql-result-number{font-size:clamp(27px,7vw,43px);line-height:1.2;font-weight:bold;color:var(--accent);margin:10px 0 5px;overflow-wrap:anywhere}#qlco-result-overlay .ql-result-hero>span{font-size:11px;color:#b2c1d5}
         #qlco-result-overlay .ql-loot{list-style:none;padding:0;margin:0;display:grid;gap:8px}#qlco-result-overlay .ql-loot li{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid #ffffff13;border-radius:11px;background:#ffffff05}#qlco-result-overlay .ql-loot-icon{display:grid;place-items:center;flex-shrink:0;width:34px;height:34px;border-radius:9px;background:#ffffff0b;color:var(--accent);font-size:21px}#qlco-result-overlay .ql-loot li>span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}#qlco-result-overlay .ql-loot strong{font-size:12px;color:var(--accent);text-align:right}
         #qlco-result-overlay .ql-result-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}#qlco-result-overlay .ql-result-stats>span{padding:12px;background:#0002;border-radius:10px;color:#b5c4d7;font-size:11px;min-width:0}#qlco-result-overlay .ql-result-stats b{display:block;font-size:19px;color:#fff;overflow-wrap:anywhere}#qlco-result-overlay .ql-result-stats small{display:block;font-size:10px}#qlco-result-overlay .ql-result-note{color:#b5c4d7;font-size:11px;overflow-wrap:anywhere}#qlco-result-overlay .ql-consumed{padding:0;list-style:none}#qlco-result-overlay .ql-consumed li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #ffffff10;font-size:12px}
         #qlco-result-overlay .ql-dialog-actions{display:flex;gap:9px;padding:14px 20px;border-top:1px solid #ffffff13;flex-shrink:0;background:#0002}#qlco-result-overlay .ql-dialog-actions button{flex:1;min-height:48px;padding:10px;border:1px solid #ffffff30;border-radius:10px;background:#ffffff08;color:#fff;font:700 13px Arial,sans-serif;cursor:pointer}#qlco-result-overlay .ql-dialog-actions .primary{background:var(--accent);border-color:var(--accent);color:#111923}#qlco-result-overlay :focus-visible{outline:2px solid #fff;outline-offset:2px}
         #qlco-v2 #ql-finish{width:100%;margin-top:7px;min-height:40px;background:transparent;font-size:12px}#qlco-v2 #ql-pricing p{font-size:11px;color:#b5c4d7}#qlco-v2 #ql-pricing a{color:#a6cdff;font-size:12px}#qlco-v2 .ql-key-label{display:grid;gap:5px;margin:10px 0}#qlco-v2 .ql-key-label input{width:100%}#qlco-v2 .ql-price-actions{display:flex;gap:7px;margin-top:10px}#qlco-v2 .ql-cost-row{display:flex;align-items:center;gap:8px;justify-content:space-between;margin:8px 0;font-size:12px}#qlco-v2 .ql-cost-row input{width:130px}
+        #qlco-result-overlay .ql-popup-status{margin:0;padding:8px 20px;color:#c9daea;font-size:12px;flex-shrink:0}
+        #qlco-result-overlay button:disabled{opacity:.55;cursor:wait}
+        #qlco-result-overlay .ql-summary .ql-dialog-actions{order:-1;padding:12px 62px 12px 14px;border-bottom:1px solid #8cbfd455;border-top:0}
+        #qlco-result-overlay .ql-summary .ql-dialog-scroll{flex:1}
         #qlco-result-overlay .ql-summary{background:#132330;border:2px solid #8cbfd4;border-radius:12px}
         #qlco-result-overlay .ql-summary-banner{margin:-25px -25px 22px;padding:18px 55px 18px 25px;background:#244657;color:#dcf4ff;font-weight:bold;font-size:17px;letter-spacing:.03em;border-bottom:1px solid #8cbfd455}
         #qlco-result-overlay .ql-summary .ql-result-hero{text-align:left;padding:0 0 18px;border-bottom:1px dashed #8cbfd466}
