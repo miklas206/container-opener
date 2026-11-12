@@ -10,8 +10,9 @@ your rewards. One press opens one container.
 
 ## Features
 
-- **Rules** — blacklist container types, set an **Open up to** limit per round,
-  and use **Keep at least** to leave a minimum quantity untouched.
+- **Rules** — check a container in **Blacklist** to block it. Unchecked containers
+  show a **Keep at least** field beside their name. Set rules even before you own
+  the item. Optional **Round limit** controls are available for allowed items.
 - **Settings** — manage your optional Torn API key, item prices, purchase costs
   and opening button position.
 - **History** — view the last 500 confirmed openings with timestamps, rewards
@@ -33,7 +34,8 @@ types are blocked by default; review **Blacklist** before enabling them.
 2. Open Torn's **Items** page and select **Find my containers**. You can also
    open an inventory category for the panel to detect its containers.
 3. All detected types are included automatically unless blacklisted. In **Rules**,
-   set **Keep at least** and optionally **Open up to**, or blacklist unwanted types.
+   check unwanted types in **Blacklist**. For unchecked types, enter **Keep at least**.
+   Blocking a type hides its quantity controls without deleting the saved values.
 4. Press **Open**. Each press opens one eligible container; nothing repeats
    automatically.
 
@@ -54,6 +56,10 @@ finger. You can also focus the handle and use arrow keys (Shift moves faster).
 The floating position is saved on this device and kept within the screen when
 resizing. **Reset floating position** restores its default position.
 Use the box icon to reopen the panel.
+
+Confirmed openings immediately update the visible inventory counts for consumed
+containers and rewards already shown on the page. Failed or unconfirmed requests
+do not change those counts.
 
 ## Optional prices
 

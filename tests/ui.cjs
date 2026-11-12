@@ -20,7 +20,7 @@ async function run() {
             let calls = 0;
             await page.route('https://www.torn.com/**', async route => {
                 if (route.request().method() !== 'POST') {
-                    await route.fulfill({ contentType: 'text/html', body: '<!doctype html><body style="margin:0;background:#ddd"><h1>Offline inventory fixture</h1><ul><li data-item="1082" data-qty="3" data-category="Supply Pack"><span class="name-wrap">Zip Wallet</span></li></ul><div style="position:fixed;bottom:0;right:0"><button id="notes_panel_button" style="width:38px;height:38px">N</button><button id="flipr-dock-btn">F</button></div></body>' }); return;
+                    await route.fulfill({ contentType: 'text/html', body: '<!doctype html><body style="margin:0;background:#ddd"><h1>Offline inventory fixture</h1><ul><li data-item="1082" data-qty="3" data-category="Supply Pack"><span class="name-wrap">Zip Wallet</span><span class="item-amount qty">3</span></li><li data-item="199" data-qty="5"><span class="name-wrap">LSD</span><span class="item-amount qty">5</span></li></ul><div style="position:fixed;bottom:0;right:0"><button id="notes_panel_button" style="width:38px;height:38px">N</button><button id="flipr-dock-btn">F</button></div></body>' }); return;
                 }
                 calls++;
                 assert.equal(route.request().postData(), calls === 1 ? 'step=useItem&id=1082&itemID=1082' : 'step=useItem&XID=21868925758');
@@ -36,6 +36,9 @@ async function run() {
             assert.match(await page.locator('.ql-result-number').innerText(), /1,130/);
             assert.match(await page.locator('.ql-loot').innerText(), /LSD/);
             assert.equal(calls, 1);
+            assert.equal(await page.locator('li[data-item="1082"]').getAttribute('data-qty'), '2');
+            assert.equal(await page.locator('li[data-item="1082"] .qty').textContent(), '2');
+            assert.equal(await page.locator('li[data-item="199"] .qty').textContent(), '6');
             const bounds = await page.locator('.ql-dialog').boundingBox();
             assert(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width + 1);
             assert.equal(await page.locator('.ql-dialog').evaluate(node => node.scrollWidth > node.clientWidth + 1), false);
@@ -44,6 +47,8 @@ async function run() {
             await page.screenshot({ path: path.join(__dirname, `preview-3.0.2-win-${width}.png`), animations: 'disabled' });
             await page.locator('.ql-dialog-actions .primary').click();
             await page.waitForFunction(() => document.querySelector('#ql-dialog-title')?.textContent === '2 containers opened');
+            assert.equal(await page.locator('li[data-item="1082"] .qty').textContent(), '1');
+            assert.equal(await page.locator('li[data-item="199"] .qty').textContent(), '6');
             assert.equal(calls, 2); assert.match(await page.locator('.ql-result-number').innerText(), /140/);
             assert.match(await page.locator('.ql-consumed').innerText(), /2× Zip Wallet.*2,000/s);
             await page.screenshot({ path: path.join(__dirname, `preview-3.0.2-summary-${width}.png`), animations: 'disabled' });

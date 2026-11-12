@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.4
+// @version      3.1.5
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -240,7 +240,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.4</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.5</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -251,8 +251,7 @@
         <p class="ql-help">Containers are detected automatically. Anything not blacklisted can be opened within your limits.</p>
         <button id="ql-find" data-action="load">Find my containers</button>
         <details id="ql-total"><summary>Total rewards this session</summary><div id="ql-total-rewards">No openings yet.</div></details>
-        <div class="ql-columns"><span>Container</span><span>Open up to</span><span>Keep at least</span></div>
-        <div id="ql-list"></div><details open><summary>Blacklist</summary><p class="ql-help">Checked items will never be opened. Everything else found in your inventory is included automatically.</p><div id="ql-blocks"></div></details>
+        <div id="ql-list"></div><details open><summary>Blacklist</summary><p class="ql-help">Check an item to block it. For unchecked items, set how many to keep in your inventory. Rules are saved even when you do not own the item.</p><div id="ql-blocks"></div></details>
         <p class="ql-help">Leave “Open up to” empty for no limit. “Keep at least” is the quantity to leave in your inventory.</p>
         </section>
         <section id="ql-page-settings" role="tabpanel" aria-labelledby="ql-tab-settings" hidden>
@@ -456,7 +455,7 @@
             }
             const xids = [...new Set([...controlValues(row, 'data-armory-id'), ...controlValues(row, 'data-armoryid'), ...controlValues(row, 'data-xid')])].filter(id);
             let quantity = null;
-            const quantityNode = row.querySelector('[data-quantity], [data-qty], .b-item-amount, [class*="amount"], [class*="quantity"]');
+            const quantityNode = row.querySelector('.item-amount.qty, .b-item-amount, [data-quantity], [data-qty], [class*="amount"], [class*="quantity"]');
             const quantityText = row.dataset.quantity || row.dataset.qty || quantityNode?.getAttribute('data-quantity') || quantityNode?.getAttribute('data-qty') || quantityNode?.textContent;
             const match = String(quantityText || '').trim().match(/^[x×]?\s*([\d,]+)\s*$/);
             if (match) quantity = Number(match[1].replace(/,/g, ''));
@@ -513,13 +512,73 @@
         panel.querySelector('#ql-find').textContent = loading ? 'Finding your containers…' : runtime.size ? 'Fetch a fresh list from Torn' : 'Find my containers';
         if (preserveList === true || editing) return;
         panel.querySelector('#ql-costs').innerHTML = [...runtime.values()].map(item => `<label class="ql-cost-row"><span>${esc(item.name)}</span><input type="number" min="0" step="0.01" inputmode="decimal" data-cost="${esc(item.itemID)}" aria-label="Your purchase cost per ${esc(item.name)}" placeholder="Market price" value="${typeof costs[item.itemID] === 'number' ? costs[item.itemID] : ''}"></label>`).join('');
-        const visible = [...runtime.values()].filter(item => filter === 'all' || groupOf(item.name) === filter);
-        panel.querySelector('#ql-list').innerHTML = visible.length ? visible.map(item => {
-            const p = plan(item.name), blocked = prefs.blacklist.includes(item.name);
-            return `<article data-name="${esc(item.name)}" class="${blocked ? 'ql-blocked' : ''}"><div class="ql-item-name"><span><b>${esc(item.name)}</b><small>${item.quantity === null ? 'Quantity unknown' : `${item.quantity} remaining`} · ${item.opened} opened · ${blocked ? 'Blocked' : item.itemID ? p.keep && item.quantity === null ? 'Fetch the list to use Keep at least' : item.quantity !== null && item.quantity <= p.keep ? 'Keep minimum reached' : p.limit > 0 && item.opened >= p.limit ? 'Round limit reached' : 'Ready' : 'Open the category in Torn'}</small></span></div><label class="ql-number"><small>Open up to</small><input aria-label="Maximum to open: ${esc(item.name)}" data-field="limit" type="number" min="0" step="1" placeholder="All" value="${p.limit || ''}"></label><label class="ql-number"><small>Keep at least</small><input aria-label="Keep at least ${esc(item.name)}" data-field="keep" type="number" min="0" step="1" value="${p.keep}"></label></article>`;
-        }).join('') : `<p class="ql-empty">${filter === 'all' ? 'Press “Find my containers” to load your inventory without opening anything.' : 'Nothing found in this category. Select All categories or open the relevant category in Torn.'}</p>`;
-        panel.querySelector('#ql-blocks').innerHTML = names.map(name => `<label><input type="checkbox" data-block="${esc(name)}" ${prefs.blacklist.includes(name) ? 'checked' : ''}>${esc(name)}</label>`).join('');
+        panel.querySelector('#ql-list').textContent = runtime.size ? `${runtime.size} container types detected in inventory.` : 'Open an inventory category or press “Find my containers”.';
+        panel.querySelector('#ql-blocks').innerHTML = names.filter(name => filter === 'all' || groupOf(name) === filter).map(name => {
+            const p = plan(name), blocked = prefs.blacklist.includes(name), item = runtime.get(name);
+            const inventory = item ? `${item.quantity === null ? 'Quantity unknown' : item.quantity + ' remaining'} · ${item.opened} opened` : 'Not detected in inventory';
+            return `<article data-name="${esc(name)}" class="ql-rule ${blocked ? 'ql-blocked' : ''}"><label class="ql-rule-toggle"><input type="checkbox" data-block="${esc(name)}" ${blocked ? 'checked' : ''}><span><b>${esc(name)}</b><small>${esc(inventory)} · ${blocked ? 'Blocked' : item && !eligible(item) ? 'Limit reached or quantity unavailable' : 'Allowed'}</small></span></label>
+                ${blocked ? '' : `<label class="ql-number"><small>Keep at least</small><input aria-label="Keep at least ${esc(name)}" data-field="keep" type="number" min="0" step="1" value="${p.keep}"></label><details class="ql-round-limit"><summary>Round limit${p.limit ? ': ' + p.limit : ' (optional)'}</summary><label class="ql-number"><small>Open up to</small><input aria-label="Maximum to open: ${esc(name)}" data-field="limit" type="number" min="0" step="1" placeholder="All" value="${p.limit || ''}"></label></details>`}</article>`;
+        }).join('');
+
     }
+
+    // Snapshot native rows before dispatch. Apply only confirmed deltas and avoid
+    // counting a change twice if Torn or another extension has already updated it.
+    function inventorySnapshot() {
+        return [...document.querySelectorAll('li[data-item], [data-item-id], [data-itemid]')]
+            .filter(row => !row.closest('#qlco-v2, #qlco-result-overlay'))
+            .map(row => {
+                const itemID = row.dataset.item || row.dataset.itemId || row.dataset.itemid;
+                const counter = row.querySelector('.item-amount.qty, .b-item-amount, [data-quantity], [data-qty]');
+                const raw = row.dataset.quantity ?? row.dataset.qty ?? counter?.dataset.quantity ?? counter?.dataset.qty ?? counter?.textContent;
+                const match = String(raw ?? '').trim().match(/^[x×]?\s*([\d,]+)\s*[x×]?$/);
+                return { row, counter, itemID, quantity: match ? Number(match[1].replace(/,/g, '')) : null,
+                    text: counter?.textContent, qty: row.getAttribute('data-qty'), count: row.getAttribute('data-quantity') };
+            });
+    }
+    function updateInventory(snapshot, openedItem, result) {
+        const deltas = new Map([[String(openedItem.itemID), -1]]);
+        for (const reward of result.rewards) {
+            const itemID = String(reward.itemID || reward.ID || '');
+            const qty = Number(reward.qty);
+            if (!reward.isMoney && /^\d+$/.test(itemID) && Number.isSafeInteger(qty) && qty > 0)
+                deltas.set(itemID, (deltas.get(itemID) || 0) + qty);
+        }
+        for (const entry of snapshot) {
+            const delta = deltas.get(entry.itemID);
+            if (!delta || !entry.row.isConnected || entry.quantity === null) continue;
+            // A native refresh during the request already supplied a newer count.
+            if (entry.row.getAttribute('data-qty') !== entry.qty ||
+                entry.row.getAttribute('data-quantity') !== entry.count ||
+                entry.counter?.textContent !== entry.text) continue;
+            const remaining = Math.max(0, entry.quantity + delta);
+            if (entry.qty !== null) entry.row.dataset.qty = String(remaining);
+            if (entry.count !== null) entry.row.dataset.quantity = String(remaining);
+            if (entry.counter) {
+                if (entry.counter.hasAttribute('data-qty')) entry.counter.dataset.qty = String(remaining);
+                if (entry.counter.hasAttribute('data-quantity')) entry.counter.dataset.quantity = String(remaining);
+                const original = entry.text || '';
+                entry.counter.textContent = original.replace(/[\d,]+/, remaining.toLocaleString('en-US'));
+            }
+            if (entry.itemID === String(openedItem.itemID)) {
+                for (const node of [entry.row, ...entry.row.querySelectorAll('[data-armory-id], [data-armoryid], [data-xid]')]) {
+                    for (const attribute of ['data-armory-id', 'data-armoryid', 'data-xid'])
+                        if (node.hasAttribute(attribute)) {
+                            if (result.next) node.setAttribute(attribute, result.next);
+                            else node.removeAttribute(attribute);
+                        }
+                }
+            }
+            if (remaining === 0) entry.row.remove();
+        }
+        // Keep already-detected reward containers in sync as well.
+        for (const item of runtime.values()) {
+            const delta = deltas.get(String(item.itemID));
+            if (item === openedItem || !delta || item.quantity === null) continue;
+            item.quantity = Math.max(0, item.quantity + delta); item.touched = true;
+        }
+    }
+
     async function openOne(event) {
         // Reject programmatic clicks; holding a key does not generate repeated openings.
         if (!event.isTrusted || client.busy || pricesLoading || halted || popup) return;
@@ -530,6 +589,7 @@
         const catalog = prices();
         const override = costs[item.itemID];
         const pricedAt = priceData.fetchedAt;
+        const inventoryBefore = inventorySnapshot();
         status = `Opening one ${item.name}…`;
         // createClient sets busy synchronously before its first await.
         try {
@@ -541,6 +601,7 @@
             item.opened += 1;
             if (item.quantity !== null) item.quantity = Math.max(0, item.quantity - 1);
             if (result.availabilityKnown && !result.another) item.quantity = 0;
+            updateInventory(inventoryBefore, item, result);
             opened += 1;
             cash += result.cash;
             for (const reward of result.rewards) {
@@ -810,6 +871,14 @@
     const mobileLabels = document.createElement('style');
     mobileLabels.textContent = '#qlco-v2 article .ql-number{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0}#qlco-v2 .ql-number>small{display:none}@media(max-width:759px){#qlco-v2 article>.ql-number{grid-column:auto!important}#qlco-v2 .ql-number>small{display:block;color:#bccce0;font-size:11px}}';
     mobileLabels.textContent += `
+        #qlco-v2 #ql-blocks{display:block}
+        #qlco-v2 #ql-blocks .ql-rule{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:10px}
+        #qlco-v2 #ql-blocks .ql-rule-toggle{min-width:0;align-items:center;font-size:12px}
+        #qlco-v2 #ql-blocks .ql-rule-toggle span{min-width:0}
+        #qlco-v2 #ql-blocks .ql-number{display:flex;flex-direction:column;align-items:stretch}
+        #qlco-v2 #ql-blocks .ql-number small{display:block}
+        #qlco-v2 #ql-blocks .ql-round-limit{grid-column:1/-1;margin:0;padding:4px 0;border:0}
+        #qlco-v2 #ql-blocks .ql-blocked .ql-rule-toggle{grid-column:1/-1}
         #qlco-v2 .ql-tabs{padding:8px 12px;flex-shrink:0;border-bottom:1px solid var(--ql-line)}
         #qlco-v2 .ql-tabs button{flex:1;min-height:42px}
         #qlco-v2 .ql-tabs [aria-selected=true]{background:#365a80;border-color:#9ac8ff}
