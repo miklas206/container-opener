@@ -9,6 +9,8 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
  await page.context().addCookies([{name:'rfc_v',value:'fixture-token',domain:'www.torn.com',path:'/'}]);
  await page.route('https://www.torn.com/**',async r=>{
   if(r.request().method()!=='POST')return r.fulfill({contentType:'text/html',body:'<!doctype html><body><ul><li data-item="1082" data-qty="'+(scenario==='last'?1:3)+'" data-armory-id="21899289699"><span class="name-wrap">Zip Wallet</span><span class="item-amount qty">'+(scenario==='last'?1:3)+'</span></li></ul></body>'});
+  if(new URLSearchParams(r.request().postData()).get('step')==='getCategoryList')
+   return r.fulfill({contentType:'application/json',body:JSON.stringify({count:1,list:[{ID:1082,name:'Zip Wallet',Qty:scenario==='last'?1:3}]})});
   if(scenario==='failed')return r.fulfill({status:500,body:'error'});
   if(scenario==='already-updated')await page.evaluate(()=>{
    const row=document.querySelector('li[data-item]');

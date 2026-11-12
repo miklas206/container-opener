@@ -31,12 +31,13 @@ start with no items selected. Newly supported types stay off until you select th
 ## Getting started
 
 1. Install the script in your userscript manager or add it to Torn PDA.
-2. Open Torn's **Items** page and select **Find my containers**. You can also
-   open an inventory category for the panel to detect its containers.
+2. Open Torn's **Items** page. Use **Find my containers** to preview your Supply
+   Packs, or go straight to your saved opening selections.
 3. In **Rules → Items to open**, check the types you want to open and enter
    **Keep at least**. Unchecked items are never opened and have no quantity fields.
-4. Press **Open**. Each press opens one eligible container; nothing repeats
-   automatically.
+4. Press **Open**. The button selects **Supply Packs**, loads all inventory pages,
+   then opens one eligible container using the fresh quantities. It never repeats
+   openings automatically. A failed or incomplete inventory read opens nothing.
 
 Selections and limits are saved for future visits. Unchecking an item hides its
 quantity controls without deleting the saved values. Updating from the previous
@@ -63,7 +64,13 @@ do not change those counts.
 
 ## Optional prices
 
-Opening containers does not require an API key. To estimate profit and loss,
+Opening containers does not require an API key. The script reads your logged-in
+Supply Packs inventory, including paginated results, before each opening.
+Your price key does not grant inventory access. Torn's separate API v2 inventory
+endpoint requires at least Minimal Access and is cached for 15 minutes per
+category, so it is not used to enforce immediate opening limits.
+See the [official API specification](https://www.torn.com/swagger/openapi.json).
+ To estimate profit and loss,
 open **Settings**, enter a Torn API key with access to `torn → items`, and select
 **Save and fetch prices**. The panel includes a link to create a suitable key.
 

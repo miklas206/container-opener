@@ -112,6 +112,26 @@ async function run() {
         const pending = client.discover(); await assert.rejects(client.open(item), /Wait/);
         resolve(response({ list: [] })); await pending;
     });
+    await test('discover loads all pages using row offsets, not item quantities', async () => {
+        const starts = [];
+        const client = make(async (url, options) => {
+            const start = Number(new URLSearchParams(options.body).get('start')); starts.push(start);
+            return response({count:3,list:start === 0 ? [{ID:1,Qty:999},{ID:2,Qty:100}] : [{ID:1082,Qty:5}]});
+        });
+        const result = await client.discover();
+        assert.deepEqual(starts,[0,2]); assert.equal(result.list.length,3);
+    });
+    await test('discover rejects repeated pages and incomplete inventories', async () => {
+        const repeated = make(async () => response({count:2,list:[{ID:1082,Qty:5}]}));
+        await assert.rejects(repeated.discover(),/repeated/);
+        let calls=0;
+        const incomplete = make(async () => response({count:2,list:calls++ ? [] : [{ID:1082,Qty:5}]}));
+        await assert.rejects(incomplete.discover(),/incomplete/);
+    });
+    await test('discover without a total reads until an empty page', async () => {
+        let calls=0;const client=make(async()=>response({list:calls++ ? [] : [{ID:1082,Qty:5}]}));
+        assert.equal((await client.discover()).list.length,1);assert.equal(calls,2);
+    });
     await test('prices include quantity and cash minus consumed container value', () => {
         const result = valueOpening('1082', fixture.items.itemAppear, { 1082: { price: 1000 }, 199: { price: 2000 } });
         assert.equal(result.received, 2130); assert.equal(result.cost, 1000); assert.equal(result.net, 1130);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.6
+// @version      3.1.7
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -92,15 +92,38 @@
                 try {
                     const url = new URL('/item.php', origin);
                     url.searchParams.set('rfcv', rfcv);
-                    const response = await fetchFn(url.href, { method: 'POST', credentials: 'same-origin', redirect: 'error',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
-                        body: new URLSearchParams({ step: 'getCategoryList', itemName: 'Supply Pack', start: '0' }).toString(), signal: controller.signal });
-                    if (!response.ok) throw new Error('Torn could not load the list. Try opening Supply Packs in Torn.');
-                    let data;
-                    try { data = JSON.parse(await response.text()); }
-                    catch { throw new Error('The list could not be read. Check your Torn login and reload the page.'); }
-                    if (!Array.isArray(data.list)) throw new Error('Torn returned an unexpected list. Open Supply Packs in Torn and press Refresh.');
-                    return data;
+                    const list = [], seenPages = new Set();
+                    let total = null;
+                    for (let page = 0; page < 100; page++) {
+                        if (!active()) throw new Error('Keep the inventory page active while loading.');
+                        const response = await fetchFn(url.href, { method: 'POST', credentials: 'same-origin', redirect: 'error',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+                            body: new URLSearchParams({ step: 'getCategoryList', itemName: 'Supply Pack', start: String(list.length) }).toString(), signal: controller.signal });
+                        if (!response.ok) throw new Error('Torn could not load Supply Packs. Nothing was opened.');
+                        let data;
+                        try { data = JSON.parse(await response.text()); }
+                        catch { throw new Error('The inventory list could not be read. Check your Torn login.'); }
+                        if (!Array.isArray(data.list)) throw new Error('Torn returned an unexpected inventory list. Nothing was opened.');
+                        const count = data.count == null ? null : Number(data.count);
+                        if (count !== null && (!Number.isSafeInteger(count) || count < 0))
+                            throw new Error('Torn returned an invalid inventory count. Nothing was opened.');
+                        if (total !== null && count !== null && total !== count)
+                            throw new Error('Inventory changed while loading. Press again to refresh before opening.');
+                        if (count !== null) total = count;
+                        if (data.list.length) {
+                            const fingerprint = JSON.stringify(data.list);
+                            if (seenPages.has(fingerprint)) throw new Error('Torn repeated an inventory page. Nothing was opened.');
+                            seenPages.add(fingerprint);
+                            list.push(...data.list);
+                        }
+                        if (total !== null && list.length >= total) return { list, count: list.length };
+                        if (!data.list.length) {
+                            if (total !== null && list.length < total) throw new Error('The inventory list is incomplete. Nothing was opened.');
+                            return { list, count: list.length };
+                        }
+                        // Without a total, request the next offset until an empty page proves completion.
+                    }
+                    throw new Error('Inventory exceeded the page limit. Nothing was opened.');
                 } catch (error) {
                     if (error.name === 'AbortError') throw new Error('Torn did not respond in time. Try again when the page is working.');
                     throw error;
@@ -184,7 +207,7 @@
     const runtime = new Map();
     const log = [];
     let filter = 'all', status = 'Detected containers follow your selected items and limits. One press opens one item.', opened = 0, cash = 0;
-    let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true, loading = false;
+    let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true, loading = false, inventoryLoaded = false;
     const rewardTotals = new Map();
     const records = [];
     const storedHistory = get('ql_container_opener_history_v1', []);
@@ -243,7 +266,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.6</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.7</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -267,7 +290,7 @@
         <p>Compare reward market values with the container's market value or your purchase cost. Values are estimates before selling fees.</p>
         <label class="ql-key-label">Torn API key · Public Only<input id="ql-api-key" type="password" autocomplete="off" placeholder="Enter your key once"></label>
         <p id="ql-key-state" class="ql-help" role="status"></p>
-        <p class="ql-help">Your key is stored locally and sent only to api.torn.com to fetch item names and market values (torn → items). Opening containers also works without a key.</p>
+        <p class="ql-help">Your key is stored locally and sent only to api.torn.com to fetch item names and market values (torn → items). Opening containers also works without a key. Inventory is loaded from your logged-in Supply Packs page, not from this price-only key.</p>
         <a href="https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=ContainerOpener&torn=items" target="_blank" rel="noopener noreferrer">Create an item-price API key in Torn</a>
         <div class="ql-price-actions"><button data-action="prices">Save and fetch prices</button><button data-action="forget-key">Forget key</button></div>
         <p id="ql-price-status" role="status">No prices loaded yet.</p><p class="ql-help">Bought a container at a different price? Enter your cost per item below. Leave it empty to use market value. New prices apply to future openings; past results retain their original valuation.</p><div id="ql-costs"></div></details>
@@ -502,13 +525,13 @@
         panel.querySelector('#ql-status').textContent = !halted && !client.busy && item && !findToken()
             ? 'Torn is not ready yet. Reload the Items page if this message persists.' : status;
         const open = panel.querySelector('#ql-open');
-        open.disabled = client.busy || pricesLoading || halted || !!popup || !item || !findToken();
+        open.disabled = client.busy || loading || pricesLoading || halted || !!popup || (!item && (inventoryLoaded || !prefs.allowedItems.length)) || !findToken();
         panel.querySelector('#ql-finish').disabled = client.busy || !records.length;
         panel.querySelector('#ql-price-state').textContent = pricesLoading ? '· loading…' : Object.keys(prices()).length ? '· ready' : '· not enabled';
-        open.textContent = client.busy ? loading ? 'Finding your containers…' : 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : 'No eligible containers · check inventory or Rules';
+        open.textContent = client.busy ? loading ? 'Finding your containers…' : 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : !inventoryLoaded && prefs.allowedItems.length ? 'Load Supply Packs and open' : 'No eligible containers · check inventory or Rules';
         quickOpen.hidden = !prefs.quickButton;
         quickOpen.disabled = open.disabled;
-        quickOpen.textContent = item || client.busy || halted ? open.textContent : 'None ready · see Rules';
+        quickOpen.textContent = open.textContent;
         quickOpen.title = status;
         placeQuickButton();
         panel.querySelectorAll('[data-action="scan"], [data-action="load"]').forEach(button => button.disabled = client.busy || halted);
@@ -584,9 +607,10 @@
 
     async function openOne(event) {
         // Reject programmatic clicks; holding a key does not generate repeated openings.
-        if (!event.isTrusted || client.busy || pricesLoading || halted || popup) return;
+        if (!event.isTrusted || client.busy || loading || pricesLoading || halted || popup) return;
+        if (!await loadInventory()) return;
         const item = next();
-        if (!item) return;
+        if (!item) { status = 'Supply Packs loaded. No selected containers are above your keep minimum or within your round limit.'; render(); return; }
         // Snapshot every available price before dispatch, so a later price refresh
         // cannot silently change the accounting for a completed opening.
         const catalog = prices();
@@ -686,11 +710,17 @@
         if (action === 'forget-key') { put('ql_container_opener_api_key_v1', ''); panel.querySelector('#ql-api-key').value = ''; panel.querySelector('#ql-price-status').textContent = 'Key removed. Cached prices remain available until they expire.'; render(true); }
         if (action === 'finish' && !client.busy && records.length) showSummary();
     });
+    function showSupplyPacks() {
+        const category = document.querySelector('[id="categoriesItem"][data-type="Supply Pack"]');
+        if (category && category.getAttribute('aria-expanded') !== 'true' && !category.classList.contains('active'))
+            category.click();
+    }
     async function loadInventory() {
-        if (client.busy || halted) return;
+        if (client.busy || loading || halted) return false;
         loading = true;
-        status = 'Loading your containers. Nothing will be opened.';
+        status = 'Loading all Supply Packs pages…';
         try {
+            showSupplyPacks();
             const request = client.discover(); render();
             const data = await request;
             const found = new Map();
@@ -706,14 +736,13 @@
                 found.set(name, { name, itemID, xid: '', quantity: Math.max(quantity, current?.quantity || 0),
                     opened: previous?.opened || 0, touched: true });
             }
-            // Replace the known supply-pack rows, including entries no longer owned.
-            for (const [name, item] of runtime) {
-                if (item.supplyPack) runtime.delete(name);
-            }
+            // Only a complete, current Supply Packs list may choose an opening target.
+            runtime.clear();
+            inventoryLoaded = true;
             for (const [name, item] of found) runtime.set(name, { ...item, supplyPack: true });
             status = found.size ? `${found.size} types found. Your selected items and limits apply automatically. Press Open when ready.` : 'No known containers found. Open the relevant category in Torn for the panel to detect them.';
-            if (Number(data.count) > data.list.length) status += ' The list may be paginated; open the category in Torn to see more.';
-        } catch (error) { status = error.message; }
+            return true;
+        } catch (error) { status = error.message; return false; }
         finally { loading = false; render(); }
     }
     async function loadPrices() {

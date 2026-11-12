@@ -15,6 +15,8 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    let calls = 0;
    await page.route('https://www.torn.com/**', async route => {
     if (route.request().method() !== 'POST') return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body><li data-item="1082" data-qty="3"><span class="name-wrap">Zip Wallet</span></li><li data-item="999" data-qty="8"><span class="name-wrap">Old Wallet</span></li></body>'});
+    if (new URLSearchParams(route.request().postData()).get('step') === 'getCategoryList')
+     return route.fulfill({contentType:'application/json',body:JSON.stringify({count:2,list:[{ID:1082,name:'Zip Wallet',Qty:3-calls},{ID:999,name:'Old Wallet',Qty:8}]})});
     calls++;
     await route.fulfill({contentType:'application/json',body:JSON.stringify({
      success:true, itemID:1082, armoryID:21899289699, nextArmoryId:21868925758,
@@ -45,7 +47,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    assert.equal(await page.locator('[data-name="Zip Wallet"] [data-field=keep]').count(),0,'blocked items have no minimum field');
    assert.equal(await page.locator('#ql-open').textContent(),'Open Old Wallet','automatically moves to next selected type');
    await page.locator('[data-allow="Old Wallet"]').uncheck();
-   assert.equal(await page.locator('#ql-open').isDisabled(),true,'no selections blocks every type');
+   assert.equal(calls,0,'changing selections never opens anything');
    await page.locator('[data-allow="Zip Wallet"]').check();
    assert.equal(await page.locator('#ql-open').textContent(),'Open Zip Wallet');
    assert.equal(await page.locator('[data-name="Zip Wallet"] [data-field=keep]').inputValue(),upgrade?'2':'0','unblocking preserves minimum');
