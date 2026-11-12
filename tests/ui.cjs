@@ -20,7 +20,7 @@ async function run() {
             let calls = 0;
             await page.route('https://www.torn.com/**', async route => {
                 if (route.request().method() !== 'POST') {
-                    await route.fulfill({ contentType: 'text/html', body: '<!doctype html><body style="margin:0;background:#ddd"><h1>Offline inventory fixture</h1><ul><li data-item="1082" data-qty="3" data-category="Supply Pack"><span class="name-wrap">Zip Wallet</span><span class="item-amount qty">3</span></li><li data-item="199" data-qty="5"><span class="name-wrap">LSD</span><span class="item-amount qty">5</span></li></ul><div style="position:fixed;bottom:0;right:0"><button id="notes_panel_button" style="width:38px;height:38px">N</button><button id="flipr-dock-btn">F</button></div></body>' }); return;
+                    await route.fulfill({ contentType: 'text/html', body: '<!doctype html><body style="margin:0;background:#ddd"><h1>Offline inventory fixture</h1><ul class="items-cont" id="supply-pack-items"><li data-item="1082" data-qty="3" data-category="Supply Pack"><span class="name-wrap">Zip Wallet</span><span class="item-amount qty">3</span></li><li data-item="199" data-qty="5"><span class="name-wrap">LSD</span><span class="item-amount qty">5</span></li></ul><div style="position:fixed;bottom:0;right:0"><button id="notes_panel_button" style="width:38px;height:38px">N</button><button id="flipr-dock-btn">F</button></div></body>' }); return;
                 }
                 if (new URLSearchParams(route.request().postData()).get('step') === 'getCategoryList') {
                     await route.fulfill({contentType:'application/json',body:JSON.stringify({count:1,list:[{ID:1082,name:'Zip Wallet',Qty:3-calls}]})}); return;
@@ -81,7 +81,7 @@ async function run() {
         });
         let calls = 0;
         await page.route('https://www.torn.com/**', async route => {
-            if (route.request().method() !== 'POST') { await route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><li data-item="1082" data-qty="3"><span class="name-wrap">Zip Wallet</span></li></body>' }); return; }
+            if (route.request().method() !== 'POST') { await route.fulfill({ contentType: 'text/html', body: '<!doctype html><body><ul class="items-cont" id="supply-pack-items"><li data-item="1082" data-qty="3"><span class="name-wrap">Zip Wallet</span></li></ul></body>' }); return; }
             if (new URLSearchParams(route.request().postData()).get('step') === 'getCategoryList') {
                 await route.fulfill({contentType:'application/json',body:JSON.stringify({count:1,list:[{ID:1082,name:'Zip Wallet',Qty:3-calls}]})}); return;
             }

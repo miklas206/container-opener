@@ -14,7 +14,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    });
    let calls = 0;
    await page.route('https://www.torn.com/**', async route => {
-    if (route.request().method() !== 'POST') return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body><li data-item="1082" data-qty="3"><span class="name-wrap">Zip Wallet</span></li><li data-item="999" data-qty="8"><span class="name-wrap">Old Wallet</span></li></body>'});
+    if (route.request().method() !== 'POST') return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body><ul class="items-cont" id="supply-pack-items"><li data-item="1082" data-qty="3"><span class="name-wrap">Zip Wallet</span></li><li data-item="999" data-qty="8"><span class="name-wrap">Old Wallet</span></li></ul></body>'});
     if (new URLSearchParams(route.request().postData()).get('step') === 'getCategoryList')
      return route.fulfill({contentType:'application/json',body:JSON.stringify({count:2,list:[{ID:1082,name:'Zip Wallet',Qty:3-calls},{ID:999,name:'Old Wallet',Qty:8}]})});
     calls++;

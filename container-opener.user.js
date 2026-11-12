@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.7
+// @version      3.1.8
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -266,7 +266,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.7</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.8</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -457,7 +457,7 @@
     }
     function scan() {
         ensureLauncher();
-        if (document.visibilityState !== 'visible' || !document.hasFocus() || client.busy || halted) return;
+        if (document.visibilityState !== 'visible' || !document.hasFocus() || client.busy || loading || halted) return;
         const seen = new Set();
         document.querySelectorAll('li[data-item], [data-item-id], [data-itemid], img[src*="items/"], [data-armory-id], [data-armoryid]').forEach(node => {
             if (node.closest('#qlco-v2, #ql-container-opener, #qlco-modal')) return;
@@ -528,7 +528,7 @@
         open.disabled = client.busy || loading || pricesLoading || halted || !!popup || (!item && (inventoryLoaded || !prefs.allowedItems.length)) || !findToken();
         panel.querySelector('#ql-finish').disabled = client.busy || !records.length;
         panel.querySelector('#ql-price-state').textContent = pricesLoading ? '· loading…' : Object.keys(prices()).length ? '· ready' : '· not enabled';
-        open.textContent = client.busy ? loading ? 'Finding your containers…' : 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : !inventoryLoaded && prefs.allowedItems.length ? 'Load Supply Packs and open' : 'No eligible containers · check inventory or Rules';
+        open.textContent = loading ? 'Loading Supply Packs…' : client.busy ? 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : !inventoryLoaded && prefs.allowedItems.length ? 'Load Supply Packs and open' : 'No eligible containers · check inventory or Rules';
         quickOpen.hidden = !prefs.quickButton;
         quickOpen.disabled = open.disabled;
         quickOpen.textContent = open.textContent;
@@ -710,17 +710,63 @@
         if (action === 'forget-key') { put('ql_container_opener_api_key_v1', ''); panel.querySelector('#ql-api-key').value = ''; panel.querySelector('#ql-price-status').textContent = 'Key removed. Cached prices remain available until they expire.'; render(true); }
         if (action === 'finish' && !client.busy && records.length) showSummary();
     });
-    function showSupplyPacks() {
-        const category = document.querySelector('[id="categoriesItem"][data-type="Supply Pack"]');
-        if (category && category.getAttribute('aria-expanded') !== 'true' && !category.classList.contains('active'))
-            category.click();
+    const isVisible = node => !!node && !node.hidden && node.getClientRects().length > 0 &&
+        getComputedStyle(node).visibility !== 'hidden';
+    function supplyPackCategory() {
+        return [...document.querySelectorAll('[data-type="Supply Pack"]')]
+            .find(node => !node.closest('#qlco-v2') && !node.matches('[data-item], ul') && isVisible(node));
+    }
+    function supplyPackList() {
+        const category = supplyPackCategory();
+        const control = category?.querySelector('a, button, [role="tab"]') || category;
+        const ids = [category?.getAttribute('aria-controls'), control?.getAttribute('aria-controls')];
+        const href = control?.getAttribute('href');
+        if (href?.startsWith('#')) ids.push(href.slice(1));
+        const linked = ids.filter(Boolean).map(value => document.getElementById(value));
+        const candidates = [...linked,
+            ...document.querySelectorAll('ul.items-cont[id*="supply" i], ul.items-cont[data-category="Supply Pack"], ul.items-cont[data-type="Supply Pack"]'),
+            ...[...document.querySelectorAll('li[data-category="Supply Pack"]')].map(row => row.closest('ul.items-cont'))];
+        return candidates.find(node => node && !node.closest('#qlco-v2') && isVisible(node) &&
+            node.getAttribute('aria-expanded') !== 'false' && node.getAttribute('aria-busy') !== 'true' &&
+            ![...node.querySelectorAll('.ajax-item-loader, [aria-busy="true"]')].some(isVisible));
+    }
+    async function showSupplyPacks() {
+        if (supplyPackList()) return;
+        const category = supplyPackCategory();
+        if (!category) throw new Error('Supply Packs category was not found. Open it manually in Torn, then try again. Nothing was opened.');
+        // Clicking the inner icon bubbles to links and delegated category handlers.
+        // Clicking the outer LI alone does not activate a handler on a child link.
+        const control = category.querySelector('.supply-pck-category-icon') ||
+            category.querySelector('a, button, [role="tab"], [role="button"]') || category;
+        await new Promise((resolve, reject) => {
+            let timer;
+            const finish = error => {
+                observer.disconnect(); clearTimeout(timer);
+                document.removeEventListener('visibilitychange', check);
+                window.removeEventListener('blur', check);
+                error ? reject(error) : resolve();
+            };
+            const check = () => {
+                if (document.visibilityState !== 'visible' || !document.hasFocus())
+                    return finish(new Error('Keep the Items page active while Supply Packs loads. Nothing was opened.'));
+                if (supplyPackList()) finish();
+            };
+            const observer = new MutationObserver(check);
+            observer.observe(document.body, { subtree: true, childList: true, attributes: true,
+                attributeFilter: ['class', 'style', 'hidden', 'aria-expanded', 'aria-busy', 'aria-controls'] });
+            document.addEventListener('visibilitychange', check);
+            window.addEventListener('blur', check);
+            timer = setTimeout(() => finish(new Error('Supply Packs did not finish loading. Open the category manually and try again. Nothing was opened.')), 10000);
+            try { control.click(); check(); } catch (error) { finish(error); }
+        });
     }
     async function loadInventory() {
         if (client.busy || loading || halted) return false;
         loading = true;
         status = 'Loading all Supply Packs pages…';
         try {
-            showSupplyPacks();
+            render();
+            await showSupplyPacks();
             const request = client.discover(); render();
             const data = await request;
             const found = new Map();
@@ -736,6 +782,7 @@
                 found.set(name, { name, itemID, xid: '', quantity: Math.max(quantity, current?.quantity || 0),
                     opened: previous?.opened || 0, touched: true });
             }
+            if (!supplyPackList()) throw new Error('Supply Packs is no longer visible. Nothing was opened.');
             // Only a complete, current Supply Packs list may choose an opening target.
             runtime.clear();
             inventoryLoaded = true;
