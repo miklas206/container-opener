@@ -24,18 +24,27 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'container-opener.user
    });
    await page.goto('https://www.torn.com/item.php');
    if (upgrade) await page.evaluate(() => {
-    GM_setValue('ql_container_opener_settings_v2',{blacklist:['Donator Pack'],plans:{'Zip Wallet':{selected:true,limit:4,keep:2}}});
+    GM_setValue('ql_container_opener_settings_v2',{blacklist:['Donator Pack'],plans:{'Zip Wallet':{selected:false,limit:4,keep:2}}});
     GM_setValue('ql_container_opener_api_key_v1','fixtureKey123456');
     GM_setValue('ql_container_opener_prices_v1',{fetchedAt:Date.now(),items:{1082:{name:'Zip Wallet',price:100}}});
    });
    await page.addScriptTag({content:source});
    assert.equal(await page.locator('#qlco-quick-open').isVisible(),false);
+   assert.equal(await page.locator('[data-field=selected]').count(),0,'no per-item opt-in');
+   assert.equal(await page.locator('#ql-open').textContent(),'Open Zip Wallet','fresh and formerly deselected containers are eligible');
+   await page.locator('[data-block="Zip Wallet"]').check();
+   assert.equal(await page.locator('#ql-open').textContent(),'Open Old Wallet','automatically moves to next non-blacklisted type');
+   await page.locator('[data-block="Old Wallet"]').check();
+   assert.equal(await page.locator('#ql-open').isDisabled(),true,'blacklist blocks every type');
+   await page.locator('[data-block="Zip Wallet"]').uncheck();
+   assert.equal(await page.locator('#ql-open').textContent(),'Open Zip Wallet');
+
    if (!upgrade) {
-    await page.locator('[data-name="Zip Wallet"] [data-field=selected]').check();
     await page.locator('[data-name="Zip Wallet"] [data-field=keep]').fill('2');
     await page.locator('[data-name="Zip Wallet"] [data-field=keep]').press('Tab');
    }
    assert.equal(await page.locator('[data-name="Zip Wallet"] [data-field=keep]').inputValue(),'2');
+   if (await page.locator('.ql-edit-done').isVisible()) await page.locator('.ql-edit-done').click();
    await page.locator('[data-tab=settings]').click();
    assert.equal(await page.locator('#ql-api-key').isVisible(),true);
    await page.locator('#ql-quick-enabled').check();

@@ -1,7 +1,7 @@
 # Questionably Legal Container Opener
 
 A Torn userscript by **slightlylegal** for desktop browsers and Torn PDA.
-Choose which containers to open, keep a reserve in your inventory, and track
+Automatically detect eligible containers, keep a reserve in your inventory, and track
 your rewards. One press opens one container.
 
 [Install from Greasy Fork](https://greasyfork.org/en/scripts/605088) ·
@@ -10,7 +10,7 @@ your rewards. One press opens one container.
 
 ## Features
 
-- **Rules** — select container types, set an **Open up to** limit per round,
+- **Rules** — blacklist container types, set an **Open up to** limit per round,
   and use **Keep at least** to leave a minimum quantity untouched.
 - **Settings** — manage your optional Torn API key, item prices, purchase costs
   and floating opening button.
@@ -24,16 +24,21 @@ your rewards. One press opens one container.
   on-screen keyboard.
 
 Supports known wallets, supply packs, caches, gifts and parcels. Some container
-types are blocked by default; review **Blocked containers** before enabling them.
+types are blocked by default; review **Blacklist** before enabling them.
 
 ## Getting started
 
 1. Install the script in your userscript manager or add it to Torn PDA.
 2. Open Torn's **Items** page and select **Find my containers**. You can also
    open an inventory category for the panel to detect its containers.
-3. In **Rules**, select the types you want to open and set your limits.
+3. All detected types are included automatically unless blacklisted. In **Rules**,
+   set **Keep at least** and optionally **Open up to**, or blacklist unwanted types.
 4. Press **Open**. Each press opens one eligible container; nothing repeats
    automatically.
+
+You do not need to select containers each time. Saved blacklists and limits apply
+automatically, including to newly detected containers. Older per-item selection
+flags are ignored; existing blacklists and quantity limits are preserved.
 
 For example, if you have 10 wallets and set **Keep at least** to 3, opening stops
 when 3 remain. If the quantity is unknown, a keep minimum blocks opening until

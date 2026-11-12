@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.1.1
+// @version      3.1.2
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -179,7 +179,7 @@
     // Runtime XIDs and rfcv are deliberately never persisted or included in diagnostics.
     const runtime = new Map();
     const log = [];
-    let filter = 'all', status = 'Choose your containers. One press opens one item.', opened = 0, cash = 0;
+    let filter = 'all', status = 'Detected containers follow your blacklist and limits. One press opens one item.', opened = 0, cash = 0;
     let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true, loading = false;
     const rewardTotals = new Map();
     const records = [];
@@ -206,7 +206,7 @@
     const groupOf = name => Object.keys(GROUPS).find(key => GROUPS[key].items.includes(name));
     function plan(name) {
         const value = prefs.plans[name] || {};
-        return { selected: value.selected === true, limit: Math.max(0, Math.floor(Number(value.limit) || 0)),
+        return { limit: Math.max(0, Math.floor(Number(value.limit) || 0)),
             keep: Math.max(0, Math.floor(Number(value.keep) || 0)) };
     }
     function save() { put('ql_container_opener_settings_v2', prefs); }
@@ -239,7 +239,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.1</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.2</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -247,11 +247,11 @@
         <button id="ql-tab-history" role="tab" aria-selected="false" aria-controls="ql-page-history" tabindex="-1" data-tab="history">History</button></nav>
         <div class="ql-body"><section id="ql-page-rules" role="tabpanel" aria-labelledby="ql-tab-rules"><div class="ql-totals"><span>Opened <b id="ql-count">0</b></span><span>Cash <b id="ql-cash">$0</b></span></div>
         <nav aria-label="Categories"><select id="ql-filter"><option value="all">All categories</option>${Object.entries(GROUPS).map(([key, group]) => `<option value="${key}">${group.label}</option>`).join('')}</select><button data-action="scan">Refresh</button></nav>
-        <p class="ql-help">1. Find your items &nbsp; 2. Select what to open &nbsp; 3. Press Open</p>
+        <p class="ql-help">Containers are detected automatically. Anything not blacklisted can be opened within your limits.</p>
         <button id="ql-find" data-action="load">Find my containers</button>
         <details id="ql-total"><summary>Total rewards this session</summary><div id="ql-total-rewards">No openings yet.</div></details>
         <div class="ql-columns"><span>Container</span><span>Open up to</span><span>Keep at least</span></div>
-        <div id="ql-list"></div><details><summary>Blocked containers</summary><div id="ql-blocks"></div></details>
+        <div id="ql-list"></div><details open><summary>Blacklist</summary><p class="ql-help">Checked items will never be opened. Everything else found in your inventory is included automatically.</p><div id="ql-blocks"></div></details>
         <p class="ql-help">Leave “Open up to” empty for no limit. “Keep at least” is the quantity to leave in your inventory.</p>
         </section>
         <section id="ql-page-settings" role="tabpanel" aria-labelledby="ql-tab-settings" hidden>
@@ -382,7 +382,7 @@
     }
     function eligible(item) {
         const p = plan(item.name);
-        return p.selected && !prefs.blacklist.includes(item.name) && !!item.itemID &&
+        return !prefs.blacklist.includes(item.name) && !!item.itemID &&
             (p.limit === 0 || item.opened < p.limit) &&
             (item.quantity === null ? p.keep === 0 : item.quantity > p.keep);
     }
@@ -417,7 +417,7 @@
         open.disabled = client.busy || pricesLoading || halted || !!popup || !item || !findToken();
         panel.querySelector('#ql-finish').disabled = client.busy || !records.length;
         panel.querySelector('#ql-price-state').textContent = pricesLoading ? '· loading…' : Object.keys(prices()).length ? '· ready' : '· not enabled';
-        open.textContent = client.busy ? loading ? 'Finding your containers…' : 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : 'Select a container in Rules';
+        open.textContent = client.busy ? loading ? 'Finding your containers…' : 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : item ? `Open ${item.name}` : 'No eligible containers · check inventory or Rules';
         quickOpen.hidden = !prefs.quickButton;
         quickOpen.disabled = open.disabled;
         quickOpen.textContent = item || client.busy || halted ? open.textContent : 'None ready · see Rules';
@@ -429,7 +429,7 @@
         const visible = [...runtime.values()].filter(item => filter === 'all' || groupOf(item.name) === filter);
         panel.querySelector('#ql-list').innerHTML = visible.length ? visible.map(item => {
             const p = plan(item.name), blocked = prefs.blacklist.includes(item.name);
-            return `<article data-name="${esc(item.name)}" class="${blocked ? 'ql-blocked' : ''}"><label><input type="checkbox" data-field="selected" ${p.selected ? 'checked' : ''} ${blocked ? 'disabled' : ''}><span><b>${esc(item.name)}</b><small>${item.quantity === null ? 'Quantity unknown' : `${item.quantity} remaining`} · ${item.opened} opened · ${blocked ? 'Blocked' : item.itemID ? p.keep && item.quantity === null ? 'Fetch the list to use Keep at least' : 'Ready' : 'Open the category in Torn'}</small></span></label><label class="ql-number"><small>Open up to</small><input aria-label="Maximum to open: ${esc(item.name)}" data-field="limit" type="number" min="0" step="1" placeholder="All" value="${p.limit || ''}"></label><label class="ql-number"><small>Keep at least</small><input aria-label="Keep at least ${esc(item.name)}" data-field="keep" type="number" min="0" step="1" value="${p.keep}"></label></article>`;
+            return `<article data-name="${esc(item.name)}" class="${blocked ? 'ql-blocked' : ''}"><div class="ql-item-name"><span><b>${esc(item.name)}</b><small>${item.quantity === null ? 'Quantity unknown' : `${item.quantity} remaining`} · ${item.opened} opened · ${blocked ? 'Blocked' : item.itemID ? p.keep && item.quantity === null ? 'Fetch the list to use Keep at least' : item.quantity !== null && item.quantity <= p.keep ? 'Keep minimum reached' : p.limit > 0 && item.opened >= p.limit ? 'Round limit reached' : 'Ready' : 'Open the category in Torn'}</small></span></div><label class="ql-number"><small>Open up to</small><input aria-label="Maximum to open: ${esc(item.name)}" data-field="limit" type="number" min="0" step="1" placeholder="All" value="${p.limit || ''}"></label><label class="ql-number"><small>Keep at least</small><input aria-label="Keep at least ${esc(item.name)}" data-field="keep" type="number" min="0" step="1" value="${p.keep}"></label></article>`;
         }).join('') : `<p class="ql-empty">${filter === 'all' ? 'Press “Find my containers” to load your inventory without opening anything.' : 'Nothing found in this category. Select All categories or open the relevant category in Torn.'}</p>`;
         panel.querySelector('#ql-blocks').innerHTML = names.map(name => `<label><input type="checkbox" data-block="${esc(name)}" ${prefs.blacklist.includes(name) ? 'checked' : ''}>${esc(name)}</label>`).join('');
     }
@@ -472,7 +472,7 @@
             history.unshift({ ...log[0], openedAt: Date.now(), net: value.net });
             history.length = Math.min(history.length, 500);
             put('ql_container_opener_history_v1', history);
-            status = result.availabilityKnown && !result.another ? 'Opened. None left of this type; the next selected type is ready.' : 'Opened. Press again when you want to open the next one.';
+            status = result.availabilityKnown && !result.another ? 'Opened. None left of this type; the next eligible type is ready.' : 'Opened. Press again when you want to open the next one.';
             showResult(record, !next());
         } catch (error) {
             halted = true;
@@ -503,9 +503,9 @@
             prefs.blacklist = [...set]; save(); render(); return;
         }
         const row = target.closest('article[data-name]');
-        if (row && target.dataset.field) {
+        if (row && ['limit', 'keep'].includes(target.dataset.field)) {
             const p = plan(row.dataset.name);
-            p[target.dataset.field] = target.type === 'checkbox' ? target.checked : Math.max(0, Math.floor(Number(target.value) || 0));
+            p[target.dataset.field] = Math.max(0, Math.floor(Number(target.value) || 0));
             prefs.plans[row.dataset.name] = p; save(); render(true);
         }
     });
@@ -553,7 +553,7 @@
                 if (item.supplyPack) runtime.delete(name);
             }
             for (const [name, item] of found) runtime.set(name, { ...item, supplyPack: true });
-            status = found.size ? `${found.size} types found. Select what you want to open and press Open.` : 'No known containers found. Open the relevant category in Torn for the panel to detect them.';
+            status = found.size ? `${found.size} types found. Your blacklist and limits apply automatically. Press Open when ready.` : 'No known containers found. Open the relevant category in Torn for the panel to detect them.';
             if (Number(data.count) > data.list.length) status += ' The list may be paginated; open the category in Torn to see more.';
         } catch (error) { status = error.message; }
         finally { loading = false; render(); }
@@ -659,7 +659,7 @@
             [{ label: 'Close summary', run: closePopup }, { label: 'New round', run: () => {
                 closePopup(); records.length = 0; log.length = 0; rewardTotals.clear(); opened = 0; cash = 0;
                 for (const item of runtime.values()) item.opened = 0;
-                status = 'New round. Choose the containers you want to open.'; render();
+                status = 'New round. Your blacklist and keep minimums still apply.'; render();
             } }]);
     }
     const observer = new MutationObserver(records => {
@@ -710,7 +710,7 @@
         #qlco-result-overlay .ql-dialog-actions{display:flex;gap:9px;padding:14px 20px;border-top:1px solid #ffffff13;flex-shrink:0;background:#0002}#qlco-result-overlay .ql-dialog-actions button{flex:1;min-height:48px;padding:10px;border:1px solid #ffffff30;border-radius:10px;background:#ffffff08;color:#fff;font:700 13px Arial,sans-serif;cursor:pointer}#qlco-result-overlay .ql-dialog-actions .primary{background:var(--accent);border-color:var(--accent);color:#111923}#qlco-result-overlay :focus-visible{outline:2px solid #fff;outline-offset:2px}
         #qlco-v2 #ql-finish{width:100%;margin-top:7px;min-height:40px;background:transparent;font-size:12px}#qlco-v2 #ql-pricing p{font-size:11px;color:#b5c4d7}#qlco-v2 #ql-pricing a{color:#a6cdff;font-size:12px}#qlco-v2 .ql-key-label{display:grid;gap:5px;margin:10px 0}#qlco-v2 .ql-key-label input{width:100%}#qlco-v2 .ql-price-actions{display:flex;gap:7px;margin-top:10px}#qlco-v2 .ql-cost-row{display:flex;align-items:center;gap:8px;justify-content:space-between;margin:8px 0;font-size:12px}#qlco-v2 .ql-cost-row input{width:130px}
         @keyframes ql-reveal{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){#qlco-result-overlay .ql-dialog{animation:none}}
-        @media(max-width:759px){#qlco-result-overlay{padding:8px;align-items:flex-end}#qlco-result-overlay .ql-dialog{max-height:calc(100dvh - 16px);border-radius:20px 20px 12px 12px}#qlco-result-overlay .ql-dialog-scroll{padding:22px 16px 16px}#qlco-result-overlay .ql-dialog-actions{padding:12px 14px max(12px,env(safe-area-inset-bottom))}#qlco-result-overlay .ql-dialog-actions button{font-size:14px;min-height:50px}#qlco-v2{max-height:calc(100dvh - 70px);width:100%;border-radius:18px 18px 0 0}#qlco-v2 article{grid-template-columns:1fr 1fr;gap:10px;padding:12px 4px}#qlco-v2 article>label{grid-column:1/-1;font-size:14px}#qlco-v2 article b{font-size:14px}#qlco-v2 article input[type=number]{min-height:44px}#qlco-v2 .ql-columns{display:none}#qlco-v2 article input[data-field=limit]{grid-column:1}#qlco-v2 article input[data-field=keep]{grid-column:2}#qlco-v2 #ql-open{min-height:52px}#qlco-v2 #ql-latest{display:none}#qlco-v2 #ql-finish{min-height:44px}}
+        @media(max-width:759px){#qlco-result-overlay{padding:8px;align-items:flex-end}#qlco-result-overlay .ql-dialog{max-height:calc(100dvh - 16px);border-radius:20px 20px 12px 12px}#qlco-result-overlay .ql-dialog-scroll{padding:22px 16px 16px}#qlco-result-overlay .ql-dialog-actions{padding:12px 14px max(12px,env(safe-area-inset-bottom))}#qlco-result-overlay .ql-dialog-actions button{font-size:14px;min-height:50px}#qlco-v2{max-height:calc(100dvh - 70px);width:100%;border-radius:18px 18px 0 0}#qlco-v2 article{grid-template-columns:1fr 1fr;gap:10px;padding:12px 4px}#qlco-v2 article>.ql-item-name{grid-column:1/-1;font-size:14px}#qlco-v2 article b{font-size:14px}#qlco-v2 article input[type=number]{min-height:44px}#qlco-v2 .ql-columns{display:none}#qlco-v2 article input[data-field=limit]{grid-column:1}#qlco-v2 article input[data-field=keep]{grid-column:2}#qlco-v2 #ql-open{min-height:52px}#qlco-v2 #ql-latest{display:none}#qlco-v2 #ql-finish{min-height:44px}}
     `;
     document.head.appendChild(popupStyle);
     const mobileLabels = document.createElement('style');
