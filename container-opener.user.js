@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.0.3
+// @version      3.1.0
 // @description  Automatically find containers in your inventory. One direct opening per press, with confirmed rewards.
 // @author       slightlylegal
 // @license      MIT
@@ -174,6 +174,7 @@
     const saved = get('ql_container_opener_settings_v2', {});
     const blacklist = Array.isArray(saved.blacklist) ? saved.blacklist : Array.isArray(old.blacklist) ? old.blacklist : defaults;
     const prefs = { blacklist: blacklist.filter(name => names.includes(name)),
+        quickButton: saved.quickButton === true,
         plans: saved.plans && typeof saved.plans === 'object' ? saved.plans : {} };
     // Runtime XIDs and rfcv are deliberately never persisted or included in diagnostics.
     const runtime = new Map();
@@ -182,6 +183,10 @@
     let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true, loading = false;
     const rewardTotals = new Map();
     const records = [];
+    const storedHistory = get('ql_container_opener_history_v1', []);
+    const history = Array.isArray(storedHistory) ? storedHistory.filter(entry =>
+        entry && typeof entry.name === 'string' && typeof entry.text === 'string' &&
+        Number.isFinite(entry.openedAt)).slice(0, 500) : [];
     let popup = null, popupReturnFocus = null, pricesLoading = false;
     const cachedPrices = get('ql_container_opener_prices_v1', {});
     let priceData = cachedPrices?.items && Number(cachedPrices.fetchedAt) > Date.now() - 3600000
@@ -233,12 +238,24 @@
     panel.id = 'qlco-v2';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.0.3</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.1.0</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API-nøgle</button><button data-action="collapse" aria-label="Skjul ved chatten" title="Skjul ved chatten">−</button></header>
-        <div class="ql-body"><div class="ql-totals"><span>Åbnet <b id="ql-count">0</b></span><span>Kontanter <b id="ql-cash">$0</b></span></div>
+        <nav class="ql-tabs" role="tablist" aria-label="Container Opener faner">
+        <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
+        <button id="ql-tab-settings" role="tab" aria-selected="false" aria-controls="ql-page-settings" tabindex="-1" data-tab="settings">Settings</button>
+        <button id="ql-tab-history" role="tab" aria-selected="false" aria-controls="ql-page-history" tabindex="-1" data-tab="history">History</button></nav>
+        <div class="ql-body"><section id="ql-page-rules" role="tabpanel" aria-labelledby="ql-tab-rules"><div class="ql-totals"><span>Åbnet <b id="ql-count">0</b></span><span>Kontanter <b id="ql-cash">$0</b></span></div>
         <nav aria-label="Kategorier"><select id="ql-filter"><option value="all">Alle kategorier</option>${Object.entries(GROUPS).map(([key, group]) => `<option value="${key}">${group.label}</option>`).join('')}</select><button data-action="scan">Opdatér</button></nav>
         <p class="ql-help">1. Find dine ting &nbsp; 2. Markér dem, du vil åbne &nbsp; 3. Tryk Åbn</p>
         <button id="ql-find" data-action="load">Find mine containere</button>
+        <details id="ql-total"><summary>Samlet udbytte denne session</summary><div id="ql-total-rewards">Ingen åbninger endnu.</div></details>
+        <div class="ql-columns"><span>Container</span><span>Åbn højst</span><span>Behold</span></div>
+        <div id="ql-list"></div><details><summary>Blokeringer</summary><div id="ql-blocks"></div></details>
+        <p class="ql-help">Lad “Åbn højst” stå tomt for alle. “Behold” er det antal, der skal blive liggende.</p>
+        </section>
+        <section id="ql-page-settings" role="tabpanel" aria-labelledby="ql-tab-settings" hidden>
+        <h3>Åbningsknap</h3><label class="ql-button-setting"><input id="ql-quick-enabled" type="checkbox" ${prefs.quickButton ? 'checked' : ''}> Vis en flydende Åbn-knap på Items-siden</label>
+        <p class="ql-help">Ét tryk åbner den næste tilladte container efter dine Rules. Knappen virker også med panelet skjult. Behold mindst og Åbn højst gælder for begge knapper.</p>
         <details id="ql-pricing"><summary>API-nøgle, priser og købspris <span id="ql-price-state"></span></summary>
         <p>Vi sammenligner udbyttets markedsværdi med containerens markedsværdi eller din egen købspris. Værdierne er estimater før salgsgebyrer.</p>
         <label class="ql-key-label">Torn API-nøgle · Public Only<input id="ql-api-key" type="password" autocomplete="off" placeholder="Indsæt nøgle én gang"></label>
@@ -247,13 +264,40 @@
         <a href="https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=ContainerOpener&torn=items" target="_blank" rel="noopener noreferrer">Opret en nøgle kun til itempriser i Torn</a>
         <div class="ql-price-actions"><button data-action="prices">Gem og hent priser</button><button data-action="forget-key">Glem nøgle</button></div>
         <p id="ql-price-status" role="status">Ingen priser indlæst endnu.</p><p class="ql-help">Har du købt en container til en anden pris? Angiv din pris pr. stk. nedenfor. Tomt felt bruger markedsværdi. Nye priser gælder fremtidige åbninger; tidligere resultater bevarer deres prisgrundlag.</p><div id="ql-costs"></div></details>
-        <details id="ql-total"><summary>Samlet udbytte denne session</summary><div id="ql-total-rewards">Ingen åbninger endnu.</div></details>
-        <div class="ql-columns"><span>Container</span><span>Åbn højst</span><span>Behold</span></div>
-        <div id="ql-list"></div><details><summary>Blokeringer</summary><div id="ql-blocks"></div></details>
-        <p class="ql-help">Lad “Åbn højst” stå tomt for alle. “Behold” er det antal, der skal blive liggende.</p>
-        <details open><summary>Seneste gevinster</summary><ol id="ql-log"><li>Ingen åbninger endnu.</li></ol></details></div>
+        </section>
+        <section id="ql-page-history" role="tabpanel" aria-labelledby="ql-tab-history" hidden>
+        <h3>Åbningshistorik</h3><p class="ql-help">De seneste 500 bekræftede åbninger gemmes på denne enhed, også efter genindlæsning og en ny runde. Tidligere åbninger fra før denne opdatering kan ikke genskabes.</p>
+        <ol id="ql-history"></ol><details><summary>Seneste gevinster denne session</summary><ol id="ql-log"><li>Ingen åbninger endnu.</li></ol></details></section></div>
         <footer class="ql-body"><section id="ql-latest" hidden aria-live="polite" aria-label="Seneste udbytte"></section><p id="ql-status" role="status" aria-live="polite"></p><button id="ql-open">Åbn næste</button><button id="ql-finish" data-action="finish">Afslut og se opgørelse</button><small>Ét tryk · én container · ingen automatisk gentagelse</small></footer>`;
     document.body.appendChild(panel);
+
+    function selectTab(tab) {
+        if (!['rules', 'settings', 'history'].includes(tab)) return;
+        panel.querySelectorAll('[data-tab]').forEach(button => {
+            const selected = button.dataset.tab === tab;
+            button.setAttribute('aria-selected', String(selected));
+            button.tabIndex = selected ? 0 : -1;
+        });
+        panel.querySelectorAll('[role=tabpanel]').forEach(section => section.hidden = section.id !== 'ql-page-' + tab);
+        if (tab === 'settings') panel.querySelector('#ql-pricing').open = true;
+    }
+    panel.querySelector('.ql-tabs').addEventListener('keydown', event => {
+        const tabs = [...panel.querySelectorAll('[data-tab]')];
+        const index = tabs.indexOf(event.target);
+        if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 :
+            (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        selectTab(tabs[next].dataset.tab); tabs[next].focus();
+    });
+    const quickOpen = document.createElement('button');
+    quickOpen.id = 'qlco-quick-open'; quickOpen.type = 'button';
+    quickOpen.hidden = !prefs.quickButton;
+    quickOpen.addEventListener('click', openOne);
+    quickOpen.addEventListener('keydown', event => {
+        if (event.repeat && ['Enter', ' '].includes(event.key)) event.preventDefault();
+    });
+    document.body.appendChild(quickOpen);
 
     // FLIPR reference: stable Notes/People IDs anchor custom buttons in Torn's bar.
     // Create our own button, without copying native handlers or changing other scripts.
@@ -265,6 +309,7 @@
     launcher.setAttribute('aria-label', 'Container Opener — vis/skjul');
     launcher.setAttribute('aria-controls', panel.id);
     function ensureLauncher() {
+        if (!quickOpen.isConnected) document.body.appendChild(quickOpen);
         const anchor = [document.getElementById('notes_panel_button'), document.getElementById('people_panel_button')]
             .find(node => node && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0);
         const parent = anchor?.parentElement || document.body;
@@ -349,6 +394,8 @@
             latest.innerHTML = `<strong>Seneste udbytte · ${esc(entry.name)}</strong><div class="ql-reward-line">${esc(entry.rewardText || 'Se Torns resultat nedenfor.')}</div><p>${esc(entry.text)}</p>`;
         }
         panel.querySelector('#ql-log').innerHTML = log.length ? log.map(entry => `<li><b>${esc(entry.name)}</b><span>${esc(entry.text)}</span><small>${esc(entry.rewardText)}</small></li>`).join('') : '<li>Ingen åbninger endnu.</li>';
+        panel.querySelector('#ql-history').innerHTML = history.length ? history.map(entry =>
+            `<li><time>${esc(new Date(entry.openedAt).toLocaleString())}</time><b>${esc(entry.name)}</b><span>${esc(entry.text)}</span><small>${esc(entry.rewardText || '')}</small><small>${entry.net === null || !Number.isFinite(entry.net) ? 'Pris mangler' : signedMoney(entry.net)}</small></li>`).join('') : '<li>Ingen gemte åbninger endnu.</li>';
         panel.querySelector('#ql-total-rewards').textContent = opened
             ? [money(cash), ...[...rewardTotals.values()].map(item => `${item.qty}× ${item.name}`)].join(' · ') : 'Ingen åbninger endnu.';
     }
@@ -370,6 +417,10 @@
         panel.querySelector('#ql-finish').disabled = client.busy || !records.length;
         panel.querySelector('#ql-price-state').textContent = pricesLoading ? '· henter…' : Object.keys(prices()).length ? '· klar' : '· ikke aktiveret';
         open.textContent = client.busy ? loading ? 'Finder dine containere…' : 'Afventer Torn…' : halted ? 'Stoppet — genindlæs siden' : item ? `Åbn ${item.name}` : 'Markér en container ovenfor';
+        quickOpen.hidden = !prefs.quickButton;
+        quickOpen.disabled = open.disabled;
+        quickOpen.textContent = item || client.busy || halted ? open.textContent : 'Ingen klar · se Rules';
+        quickOpen.title = status;
         panel.querySelectorAll('[data-action="scan"], [data-action="load"]').forEach(button => button.disabled = client.busy || halted);
         panel.querySelector('#ql-find').textContent = loading ? 'Finder dine containere…' : runtime.size ? 'Hent frisk liste fra Torn' : 'Find mine containere';
         if (preserveList === true || editing) return;
@@ -417,6 +468,9 @@
             value.entries.forEach(entry => entry.name = plainText(entry.name));
             const record = { name: item.name, itemID: item.itemID, text: plainText(result.text), value, pricedAt };
             records.push(record);
+            history.unshift({ ...log[0], openedAt: Date.now(), net: value.net });
+            history.length = Math.min(history.length, 500);
+            put('ql_container_opener_history_v1', history);
             status = result.availabilityKnown && !result.another ? 'Åbnet. Ingen flere af denne type; næste valgte type er klar.' : 'Åbnet. Tryk igen, når du vil åbne den næste.';
             showResult(record, !next());
         } catch (error) {
@@ -433,6 +487,9 @@
     });
     panel.addEventListener('change', event => {
         const target = event.target;
+        if (target.id === 'ql-quick-enabled') {
+            prefs.quickButton = target.checked; save(); render(true); return;
+        }
         if (target.dataset.cost) {
             if (target.value.trim() === '') delete costs[target.dataset.cost];
             else if (Number.isFinite(Number(target.value)) && Number(target.value) >= 0) costs[target.dataset.cost] = Number(target.value);
@@ -452,8 +509,11 @@
         }
     });
     panel.addEventListener('click', event => {
+        const tab = event.target.closest('[data-tab]')?.dataset.tab;
+        if (tab) selectTab(tab);
         const action = event.target.closest('[data-action]')?.dataset.action;
         if (action === 'api-settings') {
+            selectTab('settings');
             panel.querySelector('#ql-pricing').open = true;
             panel.querySelector('#ql-api-key').focus({ preventScroll: true });
             panel.querySelector('#ql-api-key').scrollIntoView({ block: 'center' });
@@ -574,7 +634,7 @@
             ${rewardRows(value.entries)}<div class="ql-result-stats"><span>Containerens pris<b>${value.cost === null ? 'Ukendt' : money(value.cost)}</b><small>${value.basis}</small></span><span>Udbyttets værdi<b>${value.missing.length ? 'Mindst ' : ''}${money(value.received)}</b><small>Kontanter + items</small></span></div><p class="ql-result-note">${esc(record.text)}</p>${value.net === null ? '<p class="ql-result-note">Aktivér priser i panelet for fremtidige åbninger. Manglende priser tælles ikke som nul.</p>' : ''}`,
             [{ label: value.net === null ? 'Aktivér priser' : 'Tilbage til listen', run: () => {
                 closePopup();
-                if (value.net === null) { panel.querySelector('#ql-pricing').open = true; panel.querySelector('#ql-pricing').scrollIntoView({ block: 'nearest' }); panel.querySelector('#ql-api-key').focus(); }
+                if (value.net === null) { showPanel(true); selectTab('settings'); panel.querySelector('#ql-pricing').open = true; panel.querySelector('#ql-pricing').scrollIntoView({ block: 'nearest' }); panel.querySelector('#ql-api-key').focus(); }
             } }, { label: 'Åbn næste', run: event => { closePopup(); openOne(event); } }]);
     }
     function showSummary(last = null) {
@@ -603,7 +663,7 @@
     const observer = new MutationObserver(records => {
         ensureLauncher();
         if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
-        if (!records.some(record => !panel.contains(record.target))) return;
+        if (!records.some(record => !panel.contains(record.target) && !quickOpen.contains(record.target) && !launcher.contains(record.target))) return;
         clearTimeout(scanTimer); scanTimer = setTimeout(scan, 250);
     });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true,
@@ -653,6 +713,22 @@
     document.head.appendChild(popupStyle);
     const mobileLabels = document.createElement('style');
     mobileLabels.textContent = '#qlco-v2 article .ql-number{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0}#qlco-v2 .ql-number>small{display:none}@media(max-width:759px){#qlco-v2 article>.ql-number{grid-column:auto!important}#qlco-v2 .ql-number>small{display:block;color:#bccce0;font-size:11px}}';
+    mobileLabels.textContent += `
+        #qlco-v2 .ql-tabs{padding:8px 12px;flex-shrink:0;border-bottom:1px solid var(--ql-line)}
+        #qlco-v2 .ql-tabs button{flex:1;min-height:42px}
+        #qlco-v2 .ql-tabs [aria-selected=true]{background:#365a80;border-color:#9ac8ff}
+        #qlco-v2 .ql-button-setting{display:flex;gap:8px;align-items:center}
+        #qlco-v2 #ql-history{padding:0;list-style:none}
+        #qlco-v2 #ql-history li{padding:10px 0;border-bottom:1px solid var(--ql-line);overflow-wrap:anywhere}
+        #qlco-v2 #ql-history li>*{display:block}
+        #qlco-v2 #ql-history time{font-size:11px;color:var(--ql-muted)}
+        #qlco-v2 #ql-history small{color:#98dbb1}
+        #qlco-quick-open{position:fixed;z-index:2147482998;bottom:max(8px,env(safe-area-inset-bottom));left:12px;max-width:calc(100vw - 76px);min-height:44px;padding:10px 14px;border:1px solid #65b784;border-radius:9px;background:#286341;color:white;font:bold 14px Arial,sans-serif;cursor:pointer}
+        #qlco-quick-open[hidden]{display:none!important}
+        #qlco-quick-open:disabled{background:#35433c;color:#c6d2cc;cursor:default}
+        #qlco-quick-open:focus-visible{outline:2px solid #9ac8ff;outline-offset:2px}
+        #qlco-v2.ql-editing .ql-tabs{display:none}
+    `;
     mobileLabels.textContent += '#qlco-v2 header{gap:8px;flex-wrap:wrap}#qlco-v2 header>div{flex:1;min-width:160px}#qlco-v2 header button[data-action=api-settings]{width:auto;min-height:44px;height:auto;white-space:nowrap}#qlco-v2 .ql-price-actions{flex-wrap:wrap}#qlco-v2 .ql-price-actions button{min-height:44px}';
     // iOS keyboards resize/pan the visual viewport independently of CSS vh/dvh.
     // While editing, give its usable area to the form instead of the action footer.
