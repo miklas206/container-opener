@@ -26,7 +26,7 @@ async function run() {
                     await route.fulfill({contentType:'application/json',body:JSON.stringify({count:1,list:[{ID:1082,name:'Zip Wallet',Qty:3-calls}]})}); return;
                 }
                 calls++;
-                assert.equal(route.request().postData(), 'step=useItem&id=1082&itemID=1082');
+                assert.equal(route.request().postData(), calls === 1 ? 'step=useItem&id=1082&itemID=1082' : 'step=useItem&XID=21868925758');
                 await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ success: true, itemID: 1082,
                     armoryID: calls === 1 ? 21899289699 : 21868925758, nextArmoryId: calls === 1 ? 21868925758 : 21868925759, isAnotherAvailable: true,
                     text: calls === 1 ? 'You received $130 and 1x LSD' : 'You received $10', items: { itemDisappear: [{ ID: 1082, qty: 1 }],
@@ -73,7 +73,7 @@ async function run() {
 
             await page.locator('.ql-dialog-close').click();
             await page.locator('#ql-open').click();
-            await page.waitForFunction(() => document.querySelector('#ql-status').textContent.startsWith('Supply Packs loaded.'));
+            await page.waitForFunction(() => document.querySelector('#ql-status').textContent.startsWith('No visible selected containers'));
             assert.equal(calls, 2, 'refresh cannot bypass round limit');
             await page.locator('[data-action=finish]').click();
             assert.equal(calls, 2, 'summary dispatches no game requests');

@@ -3,50 +3,61 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
 const source=fs.readFileSync(require('node:path').join(__dirname,'..','container-opener.user.js'),'utf8');
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_EXECUTABLE||undefined});
- try { for(const scenario of ['complete','failure','stop','blur']) {
-  const page=await browser.newPage({viewport:{width:390,height:844}});let calls=[],loads=0,release;
+ try { for(const scenario of ['fresh','upgrade','failure','hidden-button']) {
+  const page=await browser.newPage({viewport:{width:390,height:844}});let calls=[],release;
   const gate=new Promise(r=>release=r),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.context().addCookies([{name:'rfc_v',value:'fixture-token',domain:'www.torn.com',path:'/'}]);
-  await page.addInitScript(()=>{
-   window.values={ql_container_opener_settings_v2:{allowedItems:['Zip Wallet','Old Wallet'],plans:{'Zip Wallet':{keep:2},'Old Wallet':{limit:1}},quickButton:true}};
+  await page.addInitScript(upgrade=>{
+   window.values={ql_container_opener_settings_v2:{speedOpen:upgrade,allowedItems:['Zip Wallet','Old Wallet'],plans:{'Zip Wallet':{keep:2},'Old Wallet':{limit:1}},quickButton:true}};
    window.GM_getValue=(k,d)=>values[k]??d;window.GM_setValue=(k,v)=>values[k]=v;
-  });
+  },scenario!=='fresh');
   await page.route('https://www.torn.com/**',async r=>{
-   if(r.request().method()!=='POST')return r.fulfill({contentType:'text/html',body:'<body><ul class="items-cont" id="supply-pack-items"></ul></body>'});
+   if(r.request().method()!=='POST')return r.fulfill({contentType:'text/html',body:'<body><ul class="items-cont" id="supply-pack-items"><li data-item="1082" data-qty="4"><span class="name-wrap">Zip Wallet</span></li><li data-item="1080" data-qty="5"><span class="name-wrap">Old Wallet</span></li><li data-item="1083" data-qty="5"><span class="name-wrap">Billfold</span></li></ul></body>'});
    const params=new URLSearchParams(r.request().postData());
-   if(params.get('step')==='getCategoryList'){loads++;return r.fulfill({json:{count:3,list:[{ID:1082,name:'Zip Wallet',Qty:5},{ID:1080,name:'Old Wallet',Qty:5},{ID:1083,name:'Billfold',Qty:5}]}});}
+   assert.equal(params.get('step'),'useItem','only opening requests, never inventory requests');
    calls.push(params.get('XID')||params.get('id'));
-   if(calls.length===2){await gate;if(scenario==='failure')return r.fulfill({status:500,body:'error'});}
-   const itemID=calls.length<=3?1082:1080;
+   if(calls.length===1){await gate;if(scenario==='failure')return r.fulfill({status:500,body:'error'});}
+   const itemID=calls.length<=2?1082:1080;
    return r.fulfill({json:{success:true,itemID,armoryID:params.get('XID')||'90000',nextArmoryId:String(90000+calls.length),isAnotherAvailable:true,text:'Received $10',items:{itemDisappear:[{ID:itemID,qty:1}],itemAppear:[{isMoney:true,moneyGain:'$10'}]}}});
   });
   await page.goto('https://www.torn.com/item.php');await page.addScriptTag({content:source});
   await page.locator('[data-tab=settings]').click();
-  assert.equal(await page.locator('#ql-speed-open').isChecked(),false,'upgrade defaults off');
+  assert.equal(await page.locator('#ql-speed-open').isChecked(),scenario!=='fresh');
   await page.locator('#ql-speed-open').check();
-  assert.equal(await page.evaluate(()=>values.ql_container_opener_settings_v2.speedOpen),true);
-  await page.locator('#ql-open').click();
-  await page.waitForFunction(()=>document.querySelector('#ql-count').textContent==='1');
-  assert.equal(await page.locator('.ql-opening').count(),0);
-  assert.equal(await page.locator('#ql-latest').isHidden(),true);
-  assert.equal(await page.locator('#ql-open').isDisabled(),true);
-  if(scenario==='stop')await page.locator('#ql-stop').click();
-  if(scenario==='blur')await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
-  release();await page.waitForSelector('.ql-summary');
-  assert.equal(loads,1,'one inventory refresh for the whole batch');
-  assert.deepEqual(calls,scenario==='complete'?['1082','90001','90002','1080']:['1082','90001']);
-  const expected=scenario==='complete'?4:scenario==='failure'?1:2;
-  assert.equal(await page.locator('#ql-count').textContent(),String(expected));
-  assert.equal(await page.evaluate(()=>values.ql_container_opener_history_v1.length),expected);
-  if(scenario==='failure')assert.match(await page.locator('.ql-summary').textContent(),/outcome is unknown/);
-  if(['stop','blur'].includes(scenario))assert.match(await page.locator('.ql-summary').textContent(),/stopped/);
-  await page.getByRole('button',{name:'Done',exact:true}).click();
-  const stored=await page.evaluate(()=>values);
-  await page.reload();
-  await page.evaluate(data=>{window.values=data;},stored);
-  await page.addScriptTag({content:source});
-  assert.equal(await page.locator('#ql-speed-open').isChecked(),true,'Speed open retained after reload');
-  assert.deepEqual(errors,[]);await page.close();console.log('PASS Speed open:',scenario);
+  let button=page.locator('#ql-open');
+  if(scenario==='hidden-button'){
+   await page.locator('[data-action=collapse]').click();
+   button=page.locator('#qlco-quick-open');
+  }
+  // DOM mutations, scans, synthetic clicks and held keys cannot open containers.
+  await page.evaluate(()=>document.querySelector('#ql-open').click());
+  await page.waitForTimeout(300);assert.equal(calls.length,0);
+  await button.click();await page.waitForTimeout(100);
+  const bounds=await button.boundingBox();
+  for(let i=0;i<5;i++)await page.mouse.click(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
+  assert.equal(calls.length,1,'pending presses are discarded');
+  release();await page.waitForFunction(()=>!document.querySelector('#ql-open').disabled || document.querySelector('#ql-status').textContent.includes('HTTP 500'));
+  await page.waitForTimeout(350);assert.equal(calls.length,1,'no queued or automatic repeat');
+  assert.equal(await page.locator('#qlco-result-overlay').count(),0,'no automatic popup');
+  if(scenario==='failure'){
+   assert.equal(await page.locator('#ql-count').textContent(),'0');
+   assert.equal(await button.isDisabled(),true);
+  }else{
+   await button.focus();await page.keyboard.down('Enter');
+   await page.waitForFunction(()=>document.querySelector('#ql-count').textContent==='2');
+   await page.keyboard.down('Enter');await page.keyboard.up('Enter');
+   await page.waitForTimeout(100);assert.equal(calls.length,2,'held key is not a new press');
+   await button.click();await page.waitForFunction(()=>document.querySelector('#ql-count').textContent==='3');
+   await button.click();await page.waitForTimeout(100);
+   assert.deepEqual(calls,['1082','90001','1080'],'keep, round limit and allow list are enforced');
+   assert.equal(await page.locator('#qlco-result-overlay').count(),0);
+   if(scenario==='hidden-button')await page.locator('#qlco-dock-button').click();
+   await page.locator('#ql-finish').click();await page.waitForSelector('.ql-summary');
+   assert.match(await page.locator('#ql-dialog-title').textContent(),/3 containers/);
+   assert.equal(await page.evaluate(()=>values.ql_container_opener_history_v1.length),3);
+   await page.getByRole('button',{name:'Done',exact:true}).click();
+  }
+  assert.deepEqual(errors,[]);await page.close();console.log('PASS manual Speed open:',scenario);
  }} finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

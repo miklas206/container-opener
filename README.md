@@ -1,8 +1,9 @@
 # Questionably Legal Container Opener
 
 A Torn userscript by **slightlylegal** for desktop browsers and Torn PDA.
-Automatically detect eligible containers, keep a reserve in your inventory, and track
-your rewards. One press opens one container by default; optional **Speed open** opens all eligible selections.
+Read eligible containers from your visible inventory, keep a reserve, and track
+your rewards. One manual press opens one container. **Speed open** hides intermediate
+result popups so you can repeatedly press the same button.
 
 [Install from Greasy Fork](https://greasyfork.org/en/scripts/605088) ·
 [Script source](container-opener.user.js) ·
@@ -13,8 +14,8 @@ your rewards. One press opens one container by default; optional **Speed open** 
 - **Rules** — choose containers in **Items to open**. Only checked items may be
   opened, and only checked items show **Keep at least** and optional **Round limit**
   controls. Your choices are saved, including for items you do not currently own.
-- **Settings** — manage your optional Torn API key, item prices, purchase costs
-  and opening button position.
+- **Settings** — manage your optional Torn API key, item prices, purchase costs,
+  popup behavior and opening button position.
 - **History** — view the last 500 confirmed openings with timestamps, rewards
   and estimated profit or loss, saved across page reloads and new rounds.
 - **Positionable Open button** — open the next eligible container with the panel
@@ -31,18 +32,16 @@ start with no items selected. Newly supported types stay off until you select th
 ## Getting started
 
 1. Install the script in your userscript manager or add it to Torn PDA.
-2. Open Torn's **Items** page. Use **Find my containers** to preview your Supply
-   Packs, or go straight to your saved opening selections.
+2. Open Torn's **Items → Supply Packs** manually. The script reads the visible
+   rows. **Read visible containers** rescans those rows without sending requests.
 3. In **Rules → Items to open**, check the types you want to open and enter
    **Keep at least**. Unchecked items are never opened and have no quantity fields.
-4. Press **Open**. Each press activates the **Supply Packs** category, even if
-   a cached list is already visible or none of your items are selected, and waits
-   for its item list to become visible and finish loading, then loads all inventory pages,
-   then opens one eligible container using the fresh quantities. It never repeats
-   openings automatically unless **Speed open** is enabled. Loading remains available when no items are selected or
-   a minimum/round limit has been reached; those rules still prevent opening.
-   A failed category switch, timeout, incomplete inventory
-   read, or leaving Supply Packs before the read completes opens nothing.
+4. Press **Open**. Each new manual press sends at most one opening request for
+   an eligible container in the visible Supply Packs list. The script does not load
+   categories or inventory pages. Open additional inventory pages manually in Torn.
+   Presses during an outstanding request are ignored, never queued. Holding a key
+   does not repeat openings. Hidden, loading, missing, or unknown-quantity rows
+   cannot be opened.
 
 Selections and limits are saved for future visits. Unchecking an item hides its
 quantity controls without deleting the saved values. Updating from the previous
@@ -50,8 +49,8 @@ blacklist version converts previously allowed types to checked items and leaves
 previously blocked types unchecked. Existing minimums and round limits are retained.
 
 For example, if you have 10 wallets and set **Keep at least** to 3, opening stops
-when 3 remain. If the quantity is unknown, a keep minimum blocks opening until
-the inventory quantity is available. **Open up to** limits apply to the current
+when 3 remain. If the quantity is unknown, opening is blocked until
+the inventory quantity is available on the visible page. **Open up to** limits apply to the current
 round and reset when you choose **New round**.
 
 To open containers while the panel is hidden, enable **Show an Open button
@@ -69,22 +68,21 @@ do not change those counts.
 
 ## Speed open
 
-Enable **Settings → Speed open**, then press **Speed open selected containers**.
-The script loads the inventory once, opens your selected containers without intermediate
-result popups, and shows the combined round summary at the end. Keep minimums and
-remaining round limits apply. The setting defaults to off for both new and existing
-installations and is saved with your other preferences.
+Enable **Settings → Speed open**, then repeatedly press **Open next**.
+Every opening requires a new manual press after the previous response. There is no
+batch opening, queued input, timed repeat, inventory request, or category switching.
+Intermediate result popups are hidden; **Finish and view summary** displays the
+combined round results. Keep minimums, round limits, and saved selections still apply.
+Errors stop further openings and are never retried automatically.
 
-Requests run sequentially without added delays: Torn's confirmed response supplies the
-next container ID. The run is capped at the quantities available at its start; reward
-containers do not extend it. **Stop**, leaving the active page, or an uncertain response
-ends the run. An already sent request is allowed to finish and confirmed results are
-saved immediately. Errors appear in the final summary and are never retried automatically.
+**Version 3.2.1 replaces the automatic batch behavior in 3.2.0.** Existing Speed open
+preferences are retained, but now only control popup visibility. Update installations
+of 3.2.0 before continuing. This implementation has not received Torn staff approval.
 
 ## Optional prices
 
-Opening containers does not require an API key. The script reads your logged-in
-Supply Packs inventory, including paginated results, before each opening.
+Opening containers does not require an API key. The script reads only containers already shown on your active
+Supply Packs page; it makes no inventory requests.
 Your price key does not grant inventory access. Torn's separate API v2 inventory
 endpoint requires at least Minimal Access and is cached for 15 minutes per
 category, so it is not used to enforce immediate opening limits.

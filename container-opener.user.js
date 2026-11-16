@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.2.0
-// @description  Automatically find containers in your inventory. Optional Speed open with a combined summary and confirmed rewards.
+// @version      3.2.1
+// @description  Read containers on your visible inventory page. One manual press per opening. Speed open hides result popups; no automatic repeats or inventory requests.
 // @author       slightlylegal
 // @license      MIT
 // @homepageURL  https://github.com/miklas206/container-opener
@@ -81,54 +81,6 @@
         const uncertain = new Set();
         return {
             get busy() { return busy; },
-            async discover() {
-                if (busy) throw new Error('Wait for the current response.');
-                if (!active()) throw new Error('Use the button on the active inventory page.');
-                const rfcv = String(token() || '');
-                if (!/^[a-zA-Z0-9_-]{4,200}$/.test(rfcv)) throw new Error('Torn is not ready. Reload the Items page and try again.');
-                busy = true;
-                const controller = new AbortController();
-                const timer = setTimeout(() => controller.abort(), timeout);
-                try {
-                    const url = new URL('/item.php', origin);
-                    url.searchParams.set('rfcv', rfcv);
-                    const list = [], seenPages = new Set();
-                    let total = null;
-                    for (let page = 0; page < 100; page++) {
-                        if (!active()) throw new Error('Keep the inventory page active while loading.');
-                        const response = await fetchFn(url.href, { method: 'POST', credentials: 'same-origin', redirect: 'error',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
-                            body: new URLSearchParams({ step: 'getCategoryList', itemName: 'Supply Pack', start: String(list.length) }).toString(), signal: controller.signal });
-                        if (!response.ok) throw new Error('Torn could not load Supply Packs. Nothing was opened.');
-                        let data;
-                        try { data = JSON.parse(await response.text()); }
-                        catch { throw new Error('The inventory list could not be read. Check your Torn login.'); }
-                        if (!Array.isArray(data.list)) throw new Error('Torn returned an unexpected inventory list. Nothing was opened.');
-                        const count = data.count == null ? null : Number(data.count);
-                        if (count !== null && (!Number.isSafeInteger(count) || count < 0))
-                            throw new Error('Torn returned an invalid inventory count. Nothing was opened.');
-                        if (total !== null && count !== null && total !== count)
-                            throw new Error('Inventory changed while loading. Press again to refresh before opening.');
-                        if (count !== null) total = count;
-                        if (data.list.length) {
-                            const fingerprint = JSON.stringify(data.list);
-                            if (seenPages.has(fingerprint)) throw new Error('Torn repeated an inventory page. Nothing was opened.');
-                            seenPages.add(fingerprint);
-                            list.push(...data.list);
-                        }
-                        if (total !== null && list.length >= total) return { list, count: list.length };
-                        if (!data.list.length) {
-                            if (total !== null && list.length < total) throw new Error('The inventory list is incomplete. Nothing was opened.');
-                            return { list, count: list.length };
-                        }
-                        // Without a total, request the next offset until an empty page proves completion.
-                    }
-                    throw new Error('Inventory exceeded the page limit. Nothing was opened.');
-                } catch (error) {
-                    if (error.name === 'AbortError') throw new Error('Torn did not respond in time. Try again when the page is working.');
-                    throw error;
-                } finally { clearTimeout(timer); busy = false; }
-            },
             async open(item) {
                 if (busy) throw new Error('Wait for the current response.');
                 if (!active()) throw new Error('Use the button on the active inventory page.');
@@ -207,15 +159,14 @@
     // Runtime XIDs and rfcv are deliberately never persisted or included in diagnostics.
     const runtime = new Map();
     const log = [];
-    let filter = 'all', status = 'Detected containers follow your selected items and limits. One press opens one item.', opened = 0, cash = 0;
-    let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true, loading = false;
+    let filter = 'all', status = 'Open Supply Packs manually in Torn. One press opens one visible, selected container.', opened = 0, cash = 0;
+    let halted = false, scanTimer, collapsed = get('ql_container_opener_panel_v2', {}).hidden === true;
     const rewardTotals = new Map();
     const records = [];
     const storedHistory = get('ql_container_opener_history_v1', []);
     const history = Array.isArray(storedHistory) ? storedHistory.filter(entry =>
         entry && typeof entry.name === 'string' && typeof entry.text === 'string' &&
         Number.isFinite(entry.openedAt)).slice(0, 500) : [];
-    let speedRunning = false, speedStopped = false;
     let popupPending = false;
     let popup = null, popupReturnFocus = null, pricesLoading = false;
     const cachedPrices = get('ql_container_opener_prices_v1', {});
@@ -269,7 +220,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.0</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.1</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -278,19 +229,19 @@
         <div class="ql-body"><section id="ql-page-rules" role="tabpanel" aria-labelledby="ql-tab-rules"><div class="ql-totals"><span>Opened <b id="ql-count">0</b></span><span>Cash <b id="ql-cash">$0</b></span></div>
         <nav aria-label="Categories"><select id="ql-filter"><option value="all">All categories</option>${Object.entries(GROUPS).map(([key, group]) => `<option value="${key}">${group.label}</option>`).join('')}</select><button data-action="scan">Refresh</button></nav>
         <p class="ql-help">Containers are detected automatically. Only checked items in “Items to open” can be opened within your limits.</p>
-        <button id="ql-find" data-action="load">Find my containers</button>
+        <button id="ql-find" data-action="load">Read visible containers</button>
         <details id="ql-total"><summary>Total rewards this session</summary><div id="ql-total-rewards">No openings yet.</div></details>
         <div id="ql-list"></div><details open><summary>Items to open</summary><p class="ql-help">Check the items you want to open, then set how many to keep in your inventory. Unchecked items will never be opened. Your choices are saved for future visits.</p><div id="ql-blocks"></div></details>
         <p class="ql-help">Leave “Open up to” empty for no limit. “Keep at least” is the quantity to leave in your inventory.</p>
         </section>
         <section id="ql-page-settings" role="tabpanel" aria-labelledby="ql-tab-settings" hidden>
         <h3>Opening</h3><label class="ql-button-setting"><input id="ql-speed-open" type="checkbox" ${prefs.speedOpen ? 'checked' : ''}> Speed open</label>
-        <p class="ql-help">One press opens all selected containers up to your keep minimum and round limit, then shows only the combined result. Requests run one after another without extra pauses. Stop ends after the current response.</p>
+        <p class="ql-help">One press opens one container without a result popup. Press again after the response; extra presses while waiting are ignored, never queued. Use Finish and view summary for the combined result.</p>
         <h3>Opening button</h3><label class="ql-button-setting"><input id="ql-quick-enabled" type="checkbox" ${prefs.quickButton ? 'checked' : ''}> Show an Open button on the Items page</label>
         <label class="ql-key-label">Button position<select id="ql-quick-placement"><option value="inventory">By categories and search</option><option value="floating">Floating — movable</option></select></label>
         <p class="ql-help">In floating mode, drag the move handle with your mouse or finger. Arrow keys also move it. Your position is saved on this device.</p>
         <button data-action="reset-position">Reset floating position</button>
-        <p class="ql-help">Open follows your Rules: one container normally, or all eligible containers with Speed open. The button also works with the panel hidden. Keep at least and Open up to apply to both buttons.</p>
+        <p class="ql-help">Open follows your Rules: one container per press, with no result popup when Speed open is enabled. The button also works with the panel hidden. Keep at least and Open up to apply to both buttons.</p>
         <details id="ql-pricing"><summary>API key, prices and purchase cost <span id="ql-price-state"></span></summary>
         <p>Compare reward market values with the container's market value or your purchase cost. Values are estimates before selling fees.</p>
         <label class="ql-key-label">Torn API key · Public Only<input id="ql-api-key" type="password" autocomplete="off" placeholder="Enter your key once"></label>
@@ -303,7 +254,7 @@
         <section id="ql-page-history" role="tabpanel" aria-labelledby="ql-tab-history" hidden>
         <h3>Opening history</h3><p class="ql-help">The last 500 confirmed openings are saved on this device, including after reloading or starting a new round. Openings from before this feature was installed cannot be recovered.</p>
         <ol id="ql-history"></ol><details><summary>Recent rewards this session</summary><ol id="ql-log"><li>No openings yet.</li></ol></details></section></div>
-        <footer class="ql-body"><section id="ql-latest" hidden aria-live="polite" aria-label="Latest rewards"></section><p id="ql-status" role="status" aria-live="polite"></p><button id="ql-open">Open next</button><button id="ql-finish" data-action="finish">Finish and view summary</button><button id="ql-stop" data-action="stop" hidden>Stop</button><small id="ql-open-help"></small></footer>`;
+        <footer class="ql-body"><section id="ql-latest" hidden aria-live="polite" aria-label="Latest rewards"></section><p id="ql-status" role="status" aria-live="polite"></p><button id="ql-open">Open next</button><button id="ql-finish" data-action="finish">Finish and view summary</button><small id="ql-open-help"></small></footer>`;
     document.body.appendChild(panel);
 
     function selectTab(tab) {
@@ -462,12 +413,14 @@
     }
     function scan() {
         ensureLauncher();
-        if (document.visibilityState !== 'visible' || !document.hasFocus() || client.busy || loading || halted || speedRunning) return;
+        if (document.visibilityState !== 'visible' || !document.hasFocus() || client.busy || halted) return;
+        const list = supplyPackList();
         const seen = new Set();
         document.querySelectorAll('li[data-item], [data-item-id], [data-itemid], img[src*="items/"], [data-armory-id], [data-armoryid]').forEach(node => {
             if (node.closest('#qlco-v2, #ql-container-opener, #qlco-modal')) return;
             const row = node.closest('li.torn-divider, li, tr, [data-armory-id], [data-armoryid], [class*="itemRow"], [class*="item-row"]');
-            if (!row || seen.has(row)) return;
+            if (!row || !list?.contains(row) || !isVisible(row) || seen.has(row)) return;
+            if (row.matches('[data-faction-item]:not([data-faction-item="false"]):not([data-faction-item="0"])') || Number(row.dataset.factionId || row.dataset.factionid) > 0) return;
             seen.add(row);
             const image = node.matches('img') ? node : row.querySelector('img');
             const candidates = [image?.alt, image?.title, row.dataset.name,
@@ -478,7 +431,7 @@
             if (!name) return;
             const current = runtime.get(name);
             // Never overwrite quantities or next XIDs from a confirmed response with stale inventory DOM.
-            if (current?.touched || current?.manual) return;
+            if (current?.touched && current.row === row) return;
             const ids = [...new Set([...controlValues(row, 'data-item'), ...controlValues(row, 'data-item-id'), ...controlValues(row, 'data-itemid')])];
             if (!ids.length && image) {
                 const match = String(image.getAttribute('src')).match(/\/items\/(\d+)(?:[/.?]|$)/);
@@ -492,15 +445,16 @@
             if (match) quantity = Number(match[1].replace(/,/g, ''));
             // Multiple instance IDs in a row are ambiguous; ask for an explicit connection instead.
             runtime.set(name, { name, itemID: ids.length === 1 ? ids[0] : '', xid: xids.length === 1 ? xids[0] : '',
-                quantity, opened: current?.opened || 0, touched: false, supplyPack: row.dataset.category === 'Supply Pack' });
+                quantity, row, opened: current?.opened || 0, touched: false, supplyPack: true });
         });
         render();
     }
     function eligible(item) {
         const p = plan(item.name);
         return prefs.allowedItems.includes(item.name) && !!item.itemID &&
+            item.row?.isConnected && isVisible(item.row) && !!supplyPackList()?.contains(item.row) &&
             (p.limit === 0 || item.opened < p.limit) &&
-            (item.quantity === null ? p.keep === 0 : item.quantity > p.keep);
+            (item.quantity === null ? false : item.quantity > p.keep);
     }
     function next() { return [...runtime.values()].find(eligible); }
     function renderResults() {
@@ -525,28 +479,27 @@
         panel.querySelector('#ql-count').textContent = opened;
         panel.querySelector('#ql-cash').textContent = money(cash);
         // Result UI must update even while quantity fields retain keyboard focus.
-        if (!speedRunning) renderResults();
-        panel.querySelector('#ql-latest').hidden = speedRunning || prefs.speedOpen || !log.length;
+        renderResults();
+        panel.querySelector('#ql-latest').hidden = prefs.speedOpen || !log.length;
         const item = next();
-        panel.querySelector('#ql-status').textContent = !halted && !client.busy && item && !findToken()
+        panel.querySelector('#ql-status').textContent = prefs.speedOpen && !halted && (client.busy || status.startsWith('Opened.')) ? 'One press opens one container. Finish and view summary shows your results.' : !halted && !client.busy && item && !findToken()
             ? 'Torn is not ready yet. Reload the Items page if this message persists.' : status;
         const open = panel.querySelector('#ql-open');
-        open.disabled = speedRunning || client.busy || loading || pricesLoading || halted || !!popup || !findToken();
-        panel.querySelector('#ql-finish').disabled = speedRunning || client.busy || !records.length;
+        open.disabled = client.busy || pricesLoading || halted || !!popup || !findToken();
+        panel.querySelector('#ql-finish').disabled = client.busy || !records.length;
         panel.querySelector('#ql-price-state').textContent = pricesLoading ? '· loading…' : Object.keys(prices()).length ? '· ready' : '· not enabled';
-        panel.querySelector('#ql-stop').hidden = !speedRunning;
-        panel.querySelector('#ql-open-help').textContent = prefs.speedOpen ? 'Speed open · selected items and limits · combined result' : 'One press · one container · no automatic repeats';
-        open.textContent = speedRunning ? 'Speed open running…' : loading ? 'Loading Supply Packs…' : client.busy ? 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : prefs.speedOpen ? 'Speed open selected containers' : item ? `Open ${item.name}` : 'Load Supply Packs and open';
+        panel.querySelector('#ql-open-help').textContent = prefs.speedOpen ? 'Speed open · one press, one container · no queued openings' : 'One press · one container · no automatic repeats';
+        open.textContent = client.busy ? 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : prefs.speedOpen ? 'Open next' : item ? `Open ${item.name}` : 'No eligible visible containers';
         quickOpen.hidden = !prefs.quickButton;
         quickOpen.disabled = open.disabled;
         quickOpen.textContent = open.textContent;
         quickOpen.title = status;
         placeQuickButton();
-        panel.querySelectorAll('[data-action="scan"], [data-action="load"]').forEach(button => button.disabled = speedRunning || client.busy || halted);
-        panel.querySelector('#ql-find').textContent = loading ? 'Finding your containers…' : runtime.size ? 'Fetch a fresh list from Torn' : 'Find my containers';
-        if (preserveList === true || editing || speedRunning) return;
+        panel.querySelectorAll('[data-action="scan"], [data-action="load"]').forEach(button => button.disabled = client.busy || halted);
+        panel.querySelector('#ql-find').textContent = 'Read visible containers';
+        if (preserveList === true || editing) return;
         panel.querySelector('#ql-costs').innerHTML = [...runtime.values()].map(item => `<label class="ql-cost-row"><span>${esc(item.name)}</span><input type="number" min="0" step="0.01" inputmode="decimal" data-cost="${esc(item.itemID)}" aria-label="Your purchase cost per ${esc(item.name)}" placeholder="Market price" value="${typeof costs[item.itemID] === 'number' ? costs[item.itemID] : ''}"></label>`).join('');
-        panel.querySelector('#ql-list').textContent = runtime.size ? `${runtime.size} container types detected in inventory.` : 'Open an inventory category or press “Find my containers”.';
+        panel.querySelector('#ql-list').textContent = runtime.size ? `${runtime.size} container types detected in inventory.` : 'Open Supply Packs in Torn to show your containers.';
         panel.querySelector('#ql-blocks').innerHTML = names.filter(name => filter === 'all' || groupOf(name) === filter).map(name => {
             const p = plan(name), blocked = !prefs.allowedItems.includes(name), item = runtime.get(name);
             const inventory = item ? `${item.quantity === null ? 'Quantity unknown' : item.quantity + ' remaining'} · ${item.opened} opened` : 'Not detected in inventory';
@@ -615,37 +568,12 @@
 
     async function openOne(event, fromPopup = false) {
         // Reject programmatic clicks; holding a key does not generate repeated openings.
-        if (!event.isTrusted || speedRunning || client.busy || loading || pricesLoading || halted || (popup && !fromPopup)) return;
-        if (prefs.speedOpen && !fromPopup) return speedOpenAll();
-        if (!await loadInventory()) return;
+        if (!event.isTrusted || client.busy || pricesLoading || halted || (popup && !fromPopup)) return;
+        scan();
+        if (!supplyPackList()) { status = 'Open Supply Packs manually in Torn before opening a container.'; render(); return; }
         const item = next();
-        if (!item) { status = 'Supply Packs loaded. No selected containers are above your keep minimum or within your round limit.'; if (fromPopup) showSummary(); render(); return; }
-        await performOpening(item);
-    }
-    async function speedOpenAll() {
-        speedRunning = true; speedStopped = false;
-        try {
-            if (!await loadInventory()) return;
-            // Freeze the maximum per type: rewards cannot grow this run indefinitely.
-            const targets = [...runtime.values()].filter(eligible).map(item => {
-                const p = plan(item.name);
-                return { item, remaining: Math.min(item.quantity - p.keep, p.limit ? p.limit - item.opened : Infinity) };
-            });
-            status = 'Speed open: opening selected containers…'; render(true);
-            for (const target of targets) {
-                while (target.remaining > 0 && eligible(target.item) && !speedStopped && !halted) {
-                    if (!supplyPackList() || document.visibilityState !== 'visible' || !document.hasFocus()) {
-                        speedStopped = true; break;
-                    }
-                    if (!await performOpening(target.item, true)) break;
-                    target.remaining--;
-                }
-                if (speedStopped || halted) break;
-            }
-            if (!halted) status = speedStopped ? 'Speed open stopped. Only confirmed openings are included.' : 'Speed open complete. Your selected items and limits have been applied.';
-            speedRunning = false;
-            showSummary(null, status);
-        } finally { speedRunning = false; render(); }
+        if (!item) { status = 'No visible selected containers are above your keep minimum or within your round limit.'; if (fromPopup) showSummary(); render(); return; }
+        await performOpening(item, prefs.speedOpen);
     }
     async function performOpening(item, quiet = false) {
         // Snapshot every available price before dispatch, so a later price refresh
@@ -745,10 +673,8 @@
         if (action === 'collapse') {
             showPanel(false);
         }
-        if (action === 'stop') { speedStopped = true; status = 'Stopping after the current response…'; render(true); }
-        if (speedRunning && ['scan', 'load', 'prices', 'finish'].includes(action)) return;
         if (action === 'scan') { status = 'List refreshed from the open inventory category.'; scan(); }
-        if (action === 'load' && event.isTrusted) loadInventory();
+        if (action === 'load' && event.isTrusted) { status = 'Reading visible containers. Open Supply Packs and any additional pages manually in Torn.'; scan(); }
         if (action === 'prices' && event.isTrusted) loadPrices();
         if (action === 'forget-key') { put('ql_container_opener_api_key_v1', ''); panel.querySelector('#ql-api-key').value = ''; panel.querySelector('#ql-price-status').textContent = 'Key removed. Cached prices remain available until they expire.'; render(true); }
         if (action === 'finish' && !client.busy && records.length) showSummary();
@@ -772,69 +698,6 @@
         return candidates.find(node => node?.matches('ul.items-cont') && !node.closest('#qlco-v2') && isVisible(node) &&
             node.getAttribute('aria-expanded') !== 'false' && node.getAttribute('aria-busy') !== 'true' &&
             ![...node.querySelectorAll('.ajax-item-loader, [aria-busy="true"]')].some(isVisible));
-    }
-    async function showSupplyPacks() {
-        const category = supplyPackCategory();
-        // A cached list can still have layout while another category is selected.
-        // Activate the native category on every press when its control is available.
-        if (!category && supplyPackList()) return;
-        if (!category) throw new Error('Supply Packs category was not found. Open it manually in Torn, then try again. Nothing was opened.');
-        // Clicking the inner icon bubbles to links and delegated category handlers.
-        // Clicking the outer LI alone does not activate a handler on a child link.
-        const control = category.querySelector('.supply-pck-category-icon') ||
-            category.querySelector('a, button, [role="tab"], [role="button"]') || category;
-        await new Promise((resolve, reject) => {
-            let timer;
-            const finish = error => {
-                observer.disconnect(); clearTimeout(timer);
-                document.removeEventListener('visibilitychange', check);
-                window.removeEventListener('blur', check);
-                error ? reject(error) : resolve();
-            };
-            const check = () => {
-                if (document.visibilityState !== 'visible' || !document.hasFocus())
-                    return finish(new Error('Keep the Items page active while Supply Packs loads. Nothing was opened.'));
-                if (supplyPackList()) finish();
-            };
-            const observer = new MutationObserver(check);
-            observer.observe(document.body, { subtree: true, childList: true, attributes: true,
-                attributeFilter: ['class', 'style', 'hidden', 'aria-expanded', 'aria-busy', 'aria-controls'] });
-            document.addEventListener('visibilitychange', check);
-            window.addEventListener('blur', check);
-            timer = setTimeout(() => finish(new Error('Supply Packs did not finish loading. Open the category manually and try again. Nothing was opened.')), 10000);
-            try { control.click(); check(); } catch (error) { finish(error); }
-        });
-    }
-    async function loadInventory() {
-        if (client.busy || loading || halted) return false;
-        loading = true;
-        status = 'Loading all Supply Packs pages…';
-        try {
-            render();
-            await showSupplyPacks();
-            const request = client.discover(); render();
-            const data = await request;
-            const found = new Map();
-            for (const entry of data.list) {
-                const name = names.find(name => norm(name) === norm(entry.name));
-                const itemID = String(entry.ID ?? entry.itemID ?? '');
-                const quantity = Number(entry.Qty);
-                // Faction-loaned items must not become personal opening targets.
-                if (!name || !/^\d+$/.test(itemID) || !Number.isSafeInteger(quantity) || quantity < 0 || entry.factionItem || Number(entry.factionID) > 0) continue;
-                const previous = runtime.get(name);
-                const current = found.get(name);
-                if (current && current.itemID !== itemID) continue;
-                found.set(name, { name, itemID, xid: '', quantity: Math.max(quantity, current?.quantity || 0),
-                    opened: previous?.opened || 0, touched: true });
-            }
-            if (!supplyPackList()) throw new Error('Supply Packs is no longer visible. Nothing was opened.');
-            // Only a complete, current Supply Packs list may choose an opening target.
-            runtime.clear();
-            for (const [name, item] of found) runtime.set(name, { ...item, supplyPack: true });
-            status = found.size ? `${found.size} types found. Your selected items and limits apply automatically. Press Open when ready.` : 'No known containers found. Open the relevant category in Torn for the panel to detect them.';
-            return true;
-        } catch (error) { status = error.message; return false; }
-        finally { loading = false; render(); }
     }
     async function loadPrices() {
         if (pricesLoading) return;
@@ -925,7 +788,7 @@
         (updating ? kind === 'opening' ? popup.querySelector('.ql-dialog-actions .primary') : dialog : popup.querySelector('.ql-dialog-close')).focus({ preventScroll: true }); render(true);
     }
     async function openNextInPopup(event) {
-        if (!event.isTrusted || popupPending || !popup || halted || client.busy || loading) return;
+        if (!event.isTrusted || popupPending || !popup || halted || client.busy) return;
         popupPending = true;
         const current = popup;
         current.setAttribute('aria-busy', 'true');
@@ -992,8 +855,7 @@
     });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true,
         attributes: true, attributeFilter: ['data-item', 'data-qty', 'data-quantity', 'data-name'] });
-    document.addEventListener('visibilitychange', () => { if (speedRunning && document.visibilityState !== 'visible') speedStopped = true; if (document.visibilityState === 'visible') scan(); else clearTimeout(scanTimer); });
-    window.addEventListener('blur', () => { if (speedRunning) speedStopped = true; });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scan(); else clearTimeout(scanTimer); });
     window.addEventListener('focus', scan);
     if (typeof GM_registerMenuCommand === 'function') GM_registerMenuCommand('Show Container Opener', () => showPanel(true));
     window.addEventListener('resize', ensureLauncher);

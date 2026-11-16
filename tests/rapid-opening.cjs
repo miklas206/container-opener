@@ -13,7 +13,7 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
    window.GM_getValue=(k,d)=>values[k]??d;window.GM_setValue=(k,v)=>values[k]=v;
   });
   await page.route('https://www.torn.com/**',async r=>{
-   if(r.request().method()!=='POST')return r.fulfill({contentType:'text/html',body:'<body><ul class="items-cont" id="supply-pack-items"></ul></body>'});
+   if(r.request().method()!=='POST')return r.fulfill({contentType:'text/html',body:'<body><ul class="items-cont" id="supply-pack-items"><li data-item="1082" data-qty="4"><span class="name-wrap">Zip Wallet</span></li></ul></body>'});
    const params=new URLSearchParams(r.request().postData());
    if(params.get('step')==='getCategoryList')return r.fulfill({json:{count:1,list:[{ID:1082,name:'Zip Wallet',Qty:4-calls}]}});
    calls++;if(calls===2){await gate;if(fail)return r.fulfill({status:500,body:'error'});}
