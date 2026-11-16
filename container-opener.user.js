@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.2.4
+// @version      3.2.5
 // @description  Read containers on your visible inventory page. One manual press per opening. Speed open hides result popups; no automatic repeats or inventory requests.
 // @author       slightlylegal
 // @license      MIT
@@ -221,7 +221,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.4</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.5</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -412,6 +412,35 @@
         const values = [row, ...row.querySelectorAll(`[${attribute}]`)].map(node => node.getAttribute(attribute)).filter(Boolean);
         return [...new Set(values)];
     }
+    function readQuantity(row, name = '') {
+        const parse = value => {
+            const match = String(value ?? '').trim().match(/^(?:[x×]\s*)?(\d+|\d{1,3}(?:,\d{3})+)(?:\s*[x×])?$/i);
+            const quantity = match ? Number(match[1].replace(/,/g, '')) : NaN;
+            return Number.isSafeInteger(quantity) && quantity >= 0 ? quantity : null;
+        };
+        // Try every explicit count field; a price/empty wrapper must not hide a valid count.
+        let counter = null, visibleQuantity = null;
+        for (const node of row.querySelectorAll('.item-amount, .qty, .b-item-amount, [data-quantity], [data-qty], [class*="quantity"]')) {
+            const quantity = parse(node.dataset.quantity ?? node.dataset.qty ?? node.textContent);
+            if (quantity !== null) { counter = node; visibleQuantity = quantity; break; }
+        }
+        if (visibleQuantity === null && name) {
+            for (const node of row.querySelectorAll('.name-wrap, .title-wrap .name, [class*="name"]')) {
+                const match = node.textContent.trim().match(/^(.*?)\s*[x×]\s*(\d+|\d{1,3}(?:,\d{3})+)$/i);
+                if (!match || norm(match[1]) !== norm(name)) continue;
+                // Keep the native name/icon markup intact when updating a confirmed count.
+                const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+                let text;
+                while ((text = walker.nextNode())) {
+                    if (new RegExp('(?:[x×]\\s*)?' + match[2] + '\\s*$', 'i').test(text.textContent)) counter = text;
+                }
+                visibleQuantity = parse(match[2]);
+                break;
+            }
+        }
+        const explicit = row.dataset.quantity ?? row.dataset.qty;
+        return { quantity: explicit !== undefined ? parse(explicit) : visibleQuantity, counter };
+    }
     function scan() {
         ensureLauncher();
         if (document.visibilityState !== 'visible' || !document.hasFocus() || client.busy || categoryPending || halted) return;
@@ -425,7 +454,7 @@
             seen.add(row);
             const image = node.matches('img') ? node : row.querySelector('img');
             const candidates = [image?.alt, image?.title, row.dataset.name,
-                ...[...row.querySelectorAll('.name-wrap, .title-wrap .name, [class*="name"]')].map(node => node.textContent)];
+                ...[...row.querySelectorAll('.name-wrap, .title-wrap .name, [class*="name"]')].map(node => node.textContent)].map(text => String(text || '').replace(/\s*[x×]\s*[\d,]+\s*$/i, ''));
             const byLength = [...names].sort((a, b) => b.length - a.length);
             const name = byLength.find(name => candidates.some(text => norm(text) === norm(name))) ||
                 byLength.find(name => candidates.some(text => (` ${norm(text)} `).includes(` ${norm(name)} `)));
@@ -439,11 +468,7 @@
                 if (match) ids.push(match[1]);
             }
             const xids = [...new Set([...controlValues(row, 'data-armory-id'), ...controlValues(row, 'data-armoryid'), ...controlValues(row, 'data-xid')])].filter(id);
-            let quantity = null;
-            const quantityNode = row.querySelector('.item-amount.qty, .b-item-amount, [data-quantity], [data-qty], [class*="amount"], [class*="quantity"]');
-            const quantityText = row.dataset.quantity || row.dataset.qty || quantityNode?.getAttribute('data-quantity') || quantityNode?.getAttribute('data-qty') || quantityNode?.textContent;
-            const match = String(quantityText || '').trim().match(/^[x×]?\s*([\d,]+)\s*$/);
-            if (match) quantity = Number(match[1].replace(/,/g, ''));
+            const { quantity } = readQuantity(row, name);
             // Multiple instance IDs in a row are ambiguous; ask for an explicit connection instead.
             runtime.set(name, { name, itemID: ids.length === 1 ? ids[0] : '', xid: xids.length === 1 ? xids[0] : '',
                 quantity, row, opened: current?.opened || 0, touched: false, supplyPack: true });
@@ -528,10 +553,9 @@
             .filter(row => !row.closest('#qlco-v2, #qlco-result-overlay'))
             .map(row => {
                 const itemID = row.dataset.item || row.dataset.itemId || row.dataset.itemid;
-                const counter = row.querySelector('.item-amount.qty, .b-item-amount, [data-quantity], [data-qty]');
-                const raw = row.dataset.quantity ?? row.dataset.qty ?? counter?.dataset.quantity ?? counter?.dataset.qty ?? counter?.textContent;
-                const match = String(raw ?? '').trim().match(/^[x×]?\s*([\d,]+)\s*[x×]?$/);
-                return { row, counter, itemID, quantity: match ? Number(match[1].replace(/,/g, '')) : null,
+                const known = [...runtime.values()].find(item => String(item.itemID) === String(itemID));
+                const { quantity, counter } = readQuantity(row, known?.name);
+                return { row, counter, itemID, quantity,
                     text: counter?.textContent, qty: row.getAttribute('data-qty'), count: row.getAttribute('data-quantity') };
             });
     }
@@ -554,10 +578,10 @@
             if (entry.qty !== null) entry.row.dataset.qty = String(remaining);
             if (entry.count !== null) entry.row.dataset.quantity = String(remaining);
             if (entry.counter) {
-                if (entry.counter.hasAttribute('data-qty')) entry.counter.dataset.qty = String(remaining);
-                if (entry.counter.hasAttribute('data-quantity')) entry.counter.dataset.quantity = String(remaining);
+                if (entry.counter.hasAttribute?.('data-qty')) entry.counter.dataset.qty = String(remaining);
+                if (entry.counter.hasAttribute?.('data-quantity')) entry.counter.dataset.quantity = String(remaining);
                 const original = entry.text || '';
-                entry.counter.textContent = original.replace(/[\d,]+/, remaining.toLocaleString('en-US'));
+                entry.counter.textContent = original.replace(/\d[\d,]*(?=\s*[x×]?\s*$)/i, remaining.toLocaleString('en-US'));
             }
             if (entry.itemID === String(openedItem.itemID)) {
                 for (const node of [entry.row, ...entry.row.querySelectorAll('[data-armory-id], [data-armoryid], [data-xid]')]) {
