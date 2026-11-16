@@ -2,7 +2,7 @@
 
 A Torn userscript by **slightlylegal** for desktop browsers and Torn PDA.
 Automatically detect eligible containers, keep a reserve in your inventory, and track
-your rewards. One press opens one container.
+your rewards. One press opens one container by default; optional **Speed open** opens all eligible selections.
 
 [Install from Greasy Fork](https://greasyfork.org/en/scripts/605088) ·
 [Script source](container-opener.user.js) ·
@@ -39,7 +39,7 @@ start with no items selected. Newly supported types stay off until you select th
    a cached list is already visible or none of your items are selected, and waits
    for its item list to become visible and finish loading, then loads all inventory pages,
    then opens one eligible container using the fresh quantities. It never repeats
-   openings automatically. Loading remains available when no items are selected or
+   openings automatically unless **Speed open** is enabled. Loading remains available when no items are selected or
    a minimum/round limit has been reached; those rules still prevent opening.
    A failed category switch, timeout, incomplete inventory
    read, or leaving Supply Packs before the read completes opens nothing.
@@ -66,6 +66,20 @@ Use the box icon to reopen the panel.
 Confirmed openings immediately update the visible inventory counts for consumed
 containers and rewards already shown on the page. Failed or unconfirmed requests
 do not change those counts.
+
+## Speed open
+
+Enable **Settings → Speed open**, then press **Speed open selected containers**.
+The script loads the inventory once, opens your selected containers without intermediate
+result popups, and shows the combined round summary at the end. Keep minimums and
+remaining round limits apply. The setting defaults to off for both new and existing
+installations and is saved with your other preferences.
+
+Requests run sequentially without added delays: Torn's confirmed response supplies the
+next container ID. The run is capped at the quantities available at its start; reward
+containers do not extend it. **Stop**, leaving the active page, or an uncertain response
+ends the run. An already sent request is allowed to finish and confirmed results are
+saved immediately. Errors appear in the final summary and are never retried automatically.
 
 ## Optional prices
 
