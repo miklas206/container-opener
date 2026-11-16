@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.2.1
+// @version      3.2.2
 // @description  Read containers on your visible inventory page. One manual press per opening. Speed open hides result popups; no automatic repeats or inventory requests.
 // @author       slightlylegal
 // @license      MIT
@@ -220,7 +220,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.1</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.2</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -236,7 +236,7 @@
         </section>
         <section id="ql-page-settings" role="tabpanel" aria-labelledby="ql-tab-settings" hidden>
         <h3>Opening</h3><label class="ql-button-setting"><input id="ql-speed-open" type="checkbox" ${prefs.speedOpen ? 'checked' : ''}> Speed open</label>
-        <p class="ql-help">One press opens one container without a result popup. Press again after the response; extra presses while waiting are ignored, never queued. Use Finish and view summary for the combined result.</p>
+        <p class="ql-help">One press opens one container without a result popup. The latest rewards appear inside the opening button. Press again after the response; extra presses while waiting are ignored, never queued. Use Finish and view summary for the combined result.</p>
         <h3>Opening button</h3><label class="ql-button-setting"><input id="ql-quick-enabled" type="checkbox" ${prefs.quickButton ? 'checked' : ''}> Show an Open button on the Items page</label>
         <label class="ql-key-label">Button position<select id="ql-quick-placement"><option value="inventory">By categories and search</option><option value="floating">Floating — movable</option></select></label>
         <p class="ql-help">In floating mode, drag the move handle with your mouse or finger. Arrow keys also move it. Your position is saved on this device.</p>
@@ -492,8 +492,19 @@
         open.textContent = client.busy ? 'Waiting for Torn…' : halted ? 'Stopped — reload the page' : prefs.speedOpen ? 'Open next' : item ? `Open ${item.name}` : 'No eligible visible containers';
         quickOpen.hidden = !prefs.quickButton;
         quickOpen.disabled = open.disabled;
-        quickOpen.textContent = open.textContent;
-        quickOpen.title = status;
+        const label = open.textContent;
+        const latest = log[0];
+        const reward = latest ? `${latest.name}: ${latest.rewardText || latest.text}` : 'Your latest rewards will appear here.';
+        for (const button of [open, quickOpen]) {
+            button.classList.toggle('ql-speed-open', prefs.speedOpen);
+            if (prefs.speedOpen) {
+                button.innerHTML = `<span class="ql-open-label">${esc(label)}</span><span class="ql-open-reward">${esc(reward)}</span>`;
+                button.title = `${status}\n${reward}`;
+            } else {
+                button.textContent = label;
+                button.title = status;
+            }
+        }
         placeQuickButton();
         panel.querySelectorAll('[data-action="scan"], [data-action="load"]').forEach(button => button.disabled = client.busy || halted);
         panel.querySelector('#ql-find').textContent = 'Read visible containers';
@@ -936,6 +947,10 @@
         #qlco-move-handle:focus-visible{outline:2px solid #9ac8ff;outline-offset:2px}
         #qlco-quick-open[hidden]{display:none!important}
         #qlco-quick-open:disabled{background:#35433c;color:#c6d2cc;cursor:default}
+        #qlco-v2 #ql-open.ql-speed-open,#qlco-quick-open.ql-speed-open{height:94px;min-height:94px;padding:8px 12px;box-sizing:border-box}
+        #qlco-quick-open.ql-speed-open{width:280px}
+        .ql-speed-open .ql-open-label{display:block;line-height:22px;white-space:nowrap}
+        .ql-speed-open .ql-open-reward{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;height:36px;line-height:18px;margin-top:6px;font:normal 12px/18px Arial,sans-serif;color:#e2f6e9;pointer-events:none}
         #qlco-quick-open:focus-visible{outline:2px solid #9ac8ff;outline-offset:2px}
         #qlco-v2.ql-editing .ql-tabs{display:none}
     `;

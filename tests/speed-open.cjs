@@ -3,8 +3,8 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
 const source=fs.readFileSync(require('node:path').join(__dirname,'..','container-opener.user.js'),'utf8');
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_EXECUTABLE||undefined});
- try { for(const scenario of ['fresh','upgrade','failure','hidden-button']) {
-  const page=await browser.newPage({viewport:{width:390,height:844}});let calls=[],release;
+ try { for(const width of [320,390,1280]) for(const scenario of ['fresh','upgrade','failure','hidden-button']) {
+  const page=await browser.newPage({viewport:{width,height:844}});let calls=[],release;
   const gate=new Promise(r=>release=r),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.context().addCookies([{name:'rfc_v',value:'fixture-token',domain:'www.torn.com',path:'/'}]);
@@ -19,7 +19,7 @@ const source=fs.readFileSync(require('node:path').join(__dirname,'..','container
    calls.push(params.get('XID')||params.get('id'));
    if(calls.length===1){await gate;if(scenario==='failure')return r.fulfill({status:500,body:'error'});}
    const itemID=calls.length<=2?1082:1080;
-   return r.fulfill({json:{success:true,itemID,armoryID:params.get('XID')||'90000',nextArmoryId:String(90000+calls.length),isAnotherAvailable:true,text:'Received $10',items:{itemDisappear:[{ID:itemID,qty:1}],itemAppear:[{isMoney:true,moneyGain:'$10'}]}}});
+   return r.fulfill({json:{success:true,itemID,armoryID:params.get('XID')||'90000',nextArmoryId:String(90000+calls.length),isAnotherAvailable:true,text:'Received $10',items:{itemDisappear:[{ID:itemID,qty:1}],itemAppear:calls.length===1?[{isMoney:true,moneyGain:'$10'}]:[{ID:199,name:'A very long reward name <b>kept as text</b> with extra descriptive words',qty:2}]}}});
   });
   await page.goto('https://www.torn.com/item.php');await page.addScriptTag({content:source});
   await page.locator('[data-tab=settings]').click();
@@ -44,8 +44,17 @@ const source=fs.readFileSync(require('node:path').join(__dirname,'..','container
    assert.equal(await page.locator('#ql-count').textContent(),'0');
    assert.equal(await button.isDisabled(),true);
   }else{
+   assert.match(await button.locator('.ql-open-reward').textContent(),/Zip Wallet: \$10/);
+   const confirmed=await button.boundingBox();
+   assert(Math.abs(confirmed.y-bounds.y)<2 && Math.abs(confirmed.height-bounds.height)<2,'reward does not move or resize button');
    await button.focus();await page.keyboard.down('Enter');
    await page.waitForFunction(()=>document.querySelector('#ql-count').textContent==='2');
+   assert.match(await button.locator('.ql-open-reward').textContent(),/2× A very long reward name/);
+   assert.equal(await button.locator('.ql-open-reward b').count(),0);
+   const long=await button.boundingBox();
+   assert(Math.abs(long.y-confirmed.y)<2 && Math.abs(long.height-confirmed.height)<2,'long reward keeps button stationary');
+   assert(long.x>=0 && long.x+long.width<=width+1,'button stays within viewport');
+   await page.screenshot({path:require('node:path').join(__dirname,`speed-rewards-${width}-${scenario}.png`)});
    await page.keyboard.down('Enter');await page.keyboard.up('Enter');
    await page.waitForTimeout(100);assert.equal(calls.length,2,'held key is not a new press');
    await button.click();await page.waitForFunction(()=>document.querySelector('#ql-count').textContent==='3');
@@ -58,6 +67,6 @@ const source=fs.readFileSync(require('node:path').join(__dirname,'..','container
    assert.equal(await page.evaluate(()=>values.ql_container_opener_history_v1.length),3);
    await page.getByRole('button',{name:'Done',exact:true}).click();
   }
-  assert.deepEqual(errors,[]);await page.close();console.log('PASS manual Speed open:',scenario);
+  assert.deepEqual(errors,[]);await page.close();console.log('PASS manual Speed open and inline rewards:',width,scenario);
  }} finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

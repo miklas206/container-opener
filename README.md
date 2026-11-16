@@ -71,7 +71,9 @@ do not change those counts.
 Enable **Settings → Speed open**, then repeatedly press **Open next**.
 Every opening requires a new manual press after the previous response. There is no
 batch opening, queued input, timed repeat, inventory request, or category switching.
-Intermediate result popups are hidden; **Finish and view summary** displays the
+Intermediate result popups are hidden. The latest confirmed rewards appear inside
+both opening buttons, in a fixed space that keeps the button stationary. Long results
+remain available in History and the button tooltip. **Finish and view summary** displays the
 combined round results. Keep minimums, round limits, and saved selections still apply.
 Errors stop further openings and are never retried automatically.
 
