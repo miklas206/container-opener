@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.2.2
+// @version      3.2.3
 // @description  Read containers on your visible inventory page. One manual press per opening. Speed open hides result popups; no automatic repeats or inventory requests.
 // @author       slightlylegal
 // @license      MIT
@@ -220,7 +220,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.2</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.3</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -939,7 +939,7 @@
         #qlco-v2 #ql-history time{font-size:11px;color:var(--ql-muted)}
         #qlco-v2 #ql-history small{color:#98dbb1}
         #qlco-quick-open{max-width:100%;min-height:44px;padding:10px 14px;border:1px solid #65b784;border-radius:9px;background:#286341;color:white;font:bold 14px Arial,sans-serif;cursor:pointer}
-        #qlco-quick-bar{display:flex;gap:4px;align-items:stretch;width:max-content;max-width:calc(100% - 16px);margin:8px;color-scheme:dark}
+        #qlco-quick-bar{display:flex;gap:4px;align-items:stretch;width:max-content;max-width:calc(100% - 16px);margin:8px auto;color-scheme:dark}
         #qlco-quick-bar.ql-floating{position:fixed;z-index:2147482998;margin:0;max-width:calc(100vw - 16px)}
         #qlco-quick-bar[hidden],#qlco-move-handle[hidden]{display:none!important}
         #qlco-quick-open{min-width:0;overflow-wrap:anywhere}
@@ -947,10 +947,10 @@
         #qlco-move-handle:focus-visible{outline:2px solid #9ac8ff;outline-offset:2px}
         #qlco-quick-open[hidden]{display:none!important}
         #qlco-quick-open:disabled{background:#35433c;color:#c6d2cc;cursor:default}
-        #qlco-v2 #ql-open.ql-speed-open,#qlco-quick-open.ql-speed-open{height:94px;min-height:94px;padding:8px 12px;box-sizing:border-box}
+        #qlco-v2 #ql-open.ql-speed-open,#qlco-quick-open.ql-speed-open{height:94px;min-height:94px;padding:8px 12px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
         #qlco-quick-open.ql-speed-open{width:280px}
         .ql-speed-open .ql-open-label{display:block;line-height:22px;white-space:nowrap}
-        .ql-speed-open .ql-open-reward{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;height:36px;line-height:18px;margin-top:6px;font:normal 12px/18px Arial,sans-serif;color:#e2f6e9;pointer-events:none}
+        .ql-speed-open .ql-open-reward{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;max-height:36px;width:100%;line-height:18px;margin-top:6px;font:normal 12px/18px Arial,sans-serif;color:#e2f6e9;pointer-events:none}
         #qlco-quick-open:focus-visible{outline:2px solid #9ac8ff;outline-offset:2px}
         #qlco-v2.ql-editing .ql-tabs{display:none}
     `;
