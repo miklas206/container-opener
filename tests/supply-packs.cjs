@@ -24,7 +24,7 @@ const source=fs.readFileSync(path.join(__dirname,'..','container-opener.user.js'
   if(scenario==='visible')await page.waitForFunction(()=>document.querySelector('#ql-count').textContent==='1');
   await page.waitForTimeout(300);
   assert.equal(requests,scenario==='visible'?1:0);
-  assert.equal(await page.evaluate(()=>window.categoryClicks||0),0,'never clicks Torn category controls');
+  assert.equal(await page.evaluate(()=>window.categoryClicks||0),['hidden','missing','busy','switched-away'].includes(scenario)?1:0,'category switch uses one separate manual press');
   assert.deepEqual(errors,[]);await page.close();console.log('PASS visible inventory only:',scenario);
  }}finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

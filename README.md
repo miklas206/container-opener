@@ -32,13 +32,15 @@ start with no items selected. Newly supported types stay off until you select th
 ## Getting started
 
 1. Install the script in your userscript manager or add it to Torn PDA.
-2. Open Torn's **Items → Supply Packs** manually. The script reads the visible
-   rows. **Read visible containers** rescans those rows without sending requests.
+2. Open Torn's **Items** page. Press **Go to Supply Packs** to activate Torn's
+   category control. This press only changes category; it never opens a container.
+   Once the list is ready, press again to open. **Read visible containers** rescans
+   the visible rows without sending requests.
 3. In **Rules → Items to open**, check the types you want to open and enter
    **Keep at least**. Unchecked items are never opened and have no quantity fields.
 4. Press **Open**. Each new manual press sends at most one opening request for
-   an eligible container in the visible Supply Packs list. The script does not load
-   categories or inventory pages. Open additional inventory pages manually in Torn.
+   an eligible container in the visible Supply Packs list. Category navigation requires a separate press. The script never fetches
+   inventory pages itself. Open additional inventory pages manually in Torn.
    Presses during an outstanding request are ignored, never queued. Holding a key
    does not repeat openings. Hidden, loading, missing, or unknown-quantity rows
    cannot be opened.
@@ -70,7 +72,9 @@ do not change those counts.
 
 Enable **Settings → Speed open**, then repeatedly press **Open next**.
 Every opening requires a new manual press after the previous response. There is no
-batch opening, queued input, timed repeat, inventory request, or category switching.
+batch opening, queued input, timed repeat, or script-generated inventory request.
+Outside Supply Packs the same button changes category only; opening requires a
+separate press after Torn has loaded the list.
 Intermediate result popups are hidden. The latest confirmed rewards appear inside
 both opening buttons, in a fixed space that keeps the button stationary. Long results
 remain available in History and the button tooltip. **Finish and view summary** displays the
