@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Questionably Legal Container Opener PC & PDA
 // @namespace    https://www.torn.com/
-// @version      3.2.5
+// @version      3.2.6
 // @description  Read containers on your visible inventory page. One manual press per opening. Speed open hides result popups; no automatic repeats or inventory requests.
 // @author       slightlylegal
 // @license      MIT
@@ -221,7 +221,7 @@
     panel.lang = 'en';
     panel.setAttribute('aria-label', 'Container Opener');
     // Keep the old DOM observer from scanning our new panel when upgrading without a refresh.
-    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.5</small><h2>Container Opener</h2></div>
+    panel.innerHTML = `<header><div><small>QUESTIONABLY LEGAL · v3.2.6</small><h2>Container Opener</h2></div>
         <button data-action="api-settings" aria-controls="ql-pricing">API key</button><button data-action="collapse" aria-label="Hide panel" title="Hide panel">−</button></header>
         <nav class="ql-tabs" role="tablist" aria-label="Container Opener tabs">
         <button id="ql-tab-rules" role="tab" aria-selected="true" aria-controls="ql-page-rules" data-tab="rules">Rules</button>
@@ -445,14 +445,12 @@
         ensureLauncher();
         if (document.visibilityState !== 'visible' || !document.hasFocus() || client.busy || categoryPending || halted) return;
         const list = supplyPackList();
-        const seen = new Set();
-        document.querySelectorAll('li[data-item], [data-item-id], [data-itemid], img[src*="items/"], [data-armory-id], [data-armoryid]').forEach(node => {
-            if (node.closest('#qlco-v2, #ql-container-opener, #qlco-modal')) return;
-            const row = node.closest('li.torn-divider, li, tr, [data-armory-id], [data-armoryid], [class*="itemRow"], [class*="item-row"]');
-            if (!row || !list?.contains(row) || !isVisible(row) || seen.has(row)) return;
+        // Nested desktop action rows (including Trash) repeat data-item/name.
+        // Only direct children of the inventory list represent actual items.
+        [...(list?.children || [])].forEach(row => {
+            if (!row.matches('li') || !isVisible(row)) return;
             if (row.matches('[data-faction-item]:not([data-faction-item="false"]):not([data-faction-item="0"])') || Number(row.dataset.factionId || row.dataset.factionid) > 0) return;
-            seen.add(row);
-            const image = node.matches('img') ? node : row.querySelector('img');
+            const image = row.querySelector('img');
             const candidates = [image?.alt, image?.title, row.dataset.name,
                 ...[...row.querySelectorAll('.name-wrap, .title-wrap .name, [class*="name"]')].map(node => node.textContent)].map(text => String(text || '').replace(/\s*[x×]\s*[\d,]+\s*$/i, ''));
             const byLength = [...names].sort((a, b) => b.length - a.length);
